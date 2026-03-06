@@ -8,7 +8,7 @@ ROOT_DIR = Path(__file__).parent
 sys.path.insert(0, str(ROOT_DIR))
 
 
-# ─── PAGE CONFIG ─────────────────────────────────────────────────────────────
+#  ─ PAGE CONFIG                               ─
 
 st.set_page_config(
     page_title="IntelliCredit — AI Credit Engine",
@@ -17,97 +17,169 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ─── CUSTOM CSS ──────────────────────────────────────────────────────────────
-
+#  ─ CUSTOM CSS
 st.markdown("""
 <style>
+    .stApp { background: rgb(10,14,26); color: rgb(232,234,246); }
+    section[data-testid="stSidebar"] {
+        background: rgb(13,18,38);
+        border-right: 1px solid rgb(30,42,74);
+    }
     .main-header {
-        background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
-        padding: 2rem;
-        border-radius: 12px;
+        background: linear-gradient(135deg, rgb(13,18,38), rgb(26,35,126), rgb(13,18,38));
+        padding: 2.5rem 2rem;
+        border-radius: 16px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
+        border: 1px solid rgb(30,42,74);
+        box-shadow: 0 8px 32px rgba(26,35,126,0.4);
     }
+    .main-header h1 {
+        font-size: 2.5rem;
+        font-weight: 800;
+        color: gold;
+        margin: 0;
+    }
+    .main-header p { color: rgb(159,168,218); margin: 0.3rem 0 0 0; }
     .decision-approve {
-        background: #e8f5e9;
-        border-left: 6px solid #2e7d32;
-        padding: 1rem;
-        border-radius: 8px;
-        font-size: 1.3rem;
-        font-weight: bold;
-        color: #2e7d32;
+        background: linear-gradient(135deg, rgb(10,46,10), rgb(27,94,32));
+        border: 1px solid rgb(76,175,80);
+        border-left: 6px solid rgb(76,175,80);
+        padding: 1.2rem 1.5rem;
+        border-radius: 12px;
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: rgb(165,214,167);
+        box-shadow: 0 4px 20px rgba(76,175,80,0.2);
     }
     .decision-reject {
-        background: #ffebee;
-        border-left: 6px solid #c62828;
-        padding: 1rem;
-        border-radius: 8px;
-        font-size: 1.3rem;
-        font-weight: bold;
-        color: #c62828;
+        background: linear-gradient(135deg, rgb(46,10,10), rgb(94,27,27));
+        border: 1px solid rgb(244,67,54);
+        border-left: 6px solid rgb(244,67,54);
+        padding: 1.2rem 1.5rem;
+        border-radius: 12px;
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: rgb(239,154,154);
+        box-shadow: 0 4px 20px rgba(244,67,54,0.2);
     }
     .decision-conditional {
-        background: #fff8e1;
-        border-left: 6px solid #f57f17;
-        padding: 1rem;
-        border-radius: 8px;
-        font-size: 1.3rem;
-        font-weight: bold;
-        color: #f57f17;
+        background: linear-gradient(135deg, rgb(46,31,10), rgb(94,60,10));
+        border: 1px solid rgb(255,193,7);
+        border-left: 6px solid rgb(255,193,7);
+        padding: 1.2rem 1.5rem;
+        border-radius: 12px;
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: rgb(255,224,130);
+        box-shadow: 0 4px 20px rgba(255,193,7,0.2);
     }
-    .metric-card {
-        background: white;
+    [data-testid="metric-container"] {
+        background: linear-gradient(135deg, rgb(13,18,38), rgb(20,29,53));
+        border: 1px solid rgb(30,42,74);
+        border-radius: 12px;
         padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #e0e0e0;
-        text-align: center;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    [data-testid="metric-container"] label {
+        color: rgb(159,168,218) !important;
+        font-size: 0.8rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+    [data-testid="metric-container"] [data-testid="stMetricValue"] {
+        color: gold !important;
+        font-size: 1.8rem !important;
+        font-weight: 800 !important;
     }
     .warning-box {
-        background: #fff3e0;
-        border-left: 4px solid #ff9800;
-        padding: 0.8rem;
-        border-radius: 4px;
-        margin: 0.5rem 0;
+        background: linear-gradient(135deg, rgb(26,20,0), rgb(42,32,0));
+        border-left: 4px solid rgb(255,193,7);
+        padding: 0.8rem 1rem;
+        border-radius: 8px;
+        margin: 0.4rem 0;
+        color: rgb(255,224,130);
+        font-size: 0.9rem;
     }
     .flag-box {
-        background: #ffebee;
-        border-left: 4px solid #f44336;
-        padding: 0.8rem;
-        border-radius: 4px;
-        margin: 0.5rem 0;
+        background: linear-gradient(135deg, rgb(26,0,0), rgb(42,0,0));
+        border-left: 4px solid rgb(244,67,54);
+        padding: 0.8rem 1rem;
+        border-radius: 8px;
+        margin: 0.4rem 0;
+        color: rgb(239,154,154);
+        font-size: 0.9rem;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        background: rgb(13,18,38);
+        border-radius: 10px;
+        padding: 4px;
+        gap: 4px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background: transparent;
+        color: rgb(159,168,218);
+        border-radius: 8px;
+        font-weight: 600;
+    }
+    .stTabs [aria-selected="true"] {
+        background: rgb(26,35,126) !important;
+        color: gold !important;
     }
     .stButton > button {
-        width: 100%;
-        background: linear-gradient(135deg, #1a237e, #283593);
-        color: white;
-        border: none;
-        padding: 0.8rem;
-        border-radius: 8px;
-        font-size: 1.1rem;
-        font-weight: bold;
-        cursor: pointer;
+        background: linear-gradient(135deg, rgb(26,35,126), rgb(40,53,147));
+        color: gold;
+        border: 1px solid rgb(57,73,171);
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 1rem;
+        letter-spacing: 0.05em;
+        padding: 0.6rem 1rem;
+        box-shadow: 0 4px 12px rgba(26,35,126,0.4);
     }
+    .news-negative {
+        background: rgb(26,5,5);
+        border-left: 3px solid rgb(244,67,54);
+        padding: 0.6rem 0.8rem;
+        border-radius: 6px;
+        margin: 0.3rem 0;
+        font-size: 0.85rem;
+        color: rgb(239,154,154);
+    }
+    .news-positive {
+        background: rgb(5,26,5);
+        border-left: 3px solid rgb(76,175,80);
+        padding: 0.6rem 0.8rem;
+        border-radius: 6px;
+        margin: 0.3rem 0;
+        font-size: 0.85rem;
+        color: rgb(165,214,167);
+    }
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
-# ─── HEADER ──────────────────────────────────────────────────────────────────
-
+#  ─ HEADER
 st.markdown("""
 <div class="main-header">
     <h1>🏦 IntelliCredit</h1>
-    <p style="font-size:1.1rem; opacity:0.9;">
+    <p style="font-size:1.1rem;">
         AI-Powered Credit Appraisal Engine for Indian Banks
     </p>
-    <p style="font-size:0.85rem; opacity:0.7;">
-        GST Reconciliation • XGBoost Risk Scoring •
-        Five Cs Analysis • Automated CAM Generation
+    <p style="font-size:0.8rem; color:rgb(121,134,203); margin-top:0.5rem;">
+        GST Reconciliation &nbsp;•&nbsp;
+        XGBoost + SHAP Scoring &nbsp;•&nbsp;
+        Five Cs Analysis &nbsp;•&nbsp;
+        CAM Generation &nbsp;•&nbsp;
+        Live News Research
     </p>
 </div>
 """, unsafe_allow_html=True)
 
-# ─── IMPORTS (lazy to speed up startup) ──────────────────────────────────────
+#  ─ IMPORTS (lazy to speed up startup)
 
 
 @st.cache_resource
@@ -132,7 +204,7 @@ def load_engines():
     }
 
 
-# ─── SIDEBAR ─────────────────────────────────────────────────────────────────
+#  ─ SIDEBAR                                 ─
     # Make demo available outside sidebar
 global demo
 demo = st.session_state.get("demo", {})
@@ -295,7 +367,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📊 About")
     st.markdown("""
-    **IntelliCredit v1.0**
+    ** IntelliCredit v1.0 **
     - 🤖 LLM: Groq LLaMA 3.3 70B
     - 📊 ML: XGBoost + SHAP
     - 📄 Parser: Docling
@@ -303,7 +375,7 @@ with st.sidebar:
     """)
 
 
-# ─── MAIN CONTENT ────────────────────────────────────────────────────────────
+#  ─ MAIN CONTENT
 
 tab1, tab2, tab3 = st.tabs([
     "📁 Upload Documents",
@@ -311,7 +383,7 @@ tab1, tab2, tab3 = st.tabs([
     "📊 Results"
 ])
 
-# ── TAB 1: Document Upload ───────────────────────────────────────────────────
+#   TAB 1: Document Upload                          ─
 
 with tab1:
     st.markdown("### Upload Financial Documents")
@@ -391,7 +463,7 @@ with tab1:
             "You can still run analysis with manual inputs below."
         )
 
-# ── TAB 2: Officer Inputs ────────────────────────────────────────────────────
+#   TAB 2: Officer Inputs
 with tab2:
     st.markdown("### 👤 Primary Due Diligence Inputs")
     st.markdown(
@@ -487,7 +559,7 @@ with tab2:
         st.info("Enter site visit notes above to see score preview.")
 
 
-# ── RUN ANALYSIS BUTTON ──────────────────────────────────────────────────────
+#   RUN ANALYSIS BUTTON
 
 st.markdown("---")
 
@@ -497,7 +569,7 @@ if not company_name:
 else:
     run_button = st.button("🔍 Run AI Credit Analysis")
 
-# ── TAB 3: Results ───────────────────────────────────────────────────────────
+#   TAB 3: Results                              ─
 
 with tab3:
     if "analysis_result" not in st.session_state:
@@ -511,7 +583,7 @@ with tab3:
         pred = result.risk_prediction
 
         if pred:
-            # ── Decision Banner ───────────────────────────────────────────
+            #   Decision Banner                      ─
             decision_str = str(pred.decision).replace(
                 "DecisionType.", ""
             )
@@ -537,7 +609,7 @@ with tab3:
             )
             st.markdown("")
 
-            # ── Key Metrics ───────────────────────────────────────────────
+            #   Key Metrics                        ─
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.metric(
@@ -563,7 +635,7 @@ with tab3:
 
             st.markdown("---")
 
-            # ── Charts Row ────────────────────────────────────────────────
+            #   Charts Row
             col_left, col_right = st.columns(2)
 
             with col_left:
@@ -663,7 +735,7 @@ with tab3:
 
             st.markdown("---")
 
-            # ── GST Reconciliation ────────────────────────────────────────
+            #   GST Reconciliation
             if result.gst_reconciliation:
                 st.markdown("#### 🔍 GST Reconciliation")
                 rec = result.gst_reconciliation
@@ -689,7 +761,7 @@ with tab3:
                         unsafe_allow_html=True
                     )
 
-            # ── Five Cs Detail ────────────────────────────────────────────
+            #   Five Cs Detail
             if result.five_cs:
                 st.markdown("#### 📋 Five Cs Detail")
                 cs = result.five_cs
@@ -706,7 +778,7 @@ with tab3:
                         for f in obj.factors:
                             st.markdown(f"• {f}")
 
-            # ── Early Warnings ────────────────────────────────────────────
+            #   Early Warnings
             if pred.early_warning_signals:
                 st.markdown("#### ⚠️ Early Warning Signals")
                 for w in pred.early_warning_signals:
@@ -715,12 +787,12 @@ with tab3:
                         unsafe_allow_html=True
                     )
 
-            # ── Reasoning Chain ───────────────────────────────────────────
+            #   Reasoning Chain                      ─
             st.markdown("---")
             with st.expander("🤖 View Full AI Reasoning Chain"):
                 st.text(result.reasoning_chain)
 
-            # ── Research ──────────────────────────────────────────────────
+            #   Research
             if result.research:
                 with st.expander(
                     f"📰 External Research "
@@ -732,15 +804,30 @@ with tab3:
                         st.markdown("**Negative News:**")
                         for item in r.negative_news[:5]:
                             st.markdown(
-                                f"🔴 {item.title} "
-                                f"({item.date}) — {item.source}"
+                                f'<div class="news-negative">'
+                                f'🔴 {item.title}<br>'
+                                f'<span style="opacity:0.6;font-size:0.75rem">'
+                                f'{item.date} — {item.source}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
+                    if r.positive_news:
+                        st.markdown("**Positive News:**")
+                        for item in r.positive_news[:3]:
+                            st.markdown(
+                                f'<div class="news-positive">'
+                                f'🟢 {item.title}<br>'
+                                f'<span style="opacity:0.6;font-size:0.75rem">'
+                                f'{item.date} — {item.source}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True
                             )
                     if r.litigation_details:
                         st.markdown("**Litigation:**")
                         for case in r.litigation_details:
                             st.markdown(f"⚖️ {case}")
 
-            # ── Download Reports ──────────────────────────────────────────
+            #   Download Reports
             st.markdown("---")
             st.markdown("#### 📥 Download Reports")
             col_dl1, col_dl2 = st.columns(2)
@@ -775,7 +862,7 @@ with tab3:
                             )
                         )
 
-# ─── RUN ANALYSIS PIPELINE ───────────────────────────────────────────────────
+#  ─ RUN ANALYSIS PIPELINE                          ─
 
 if run_button and company_name:
     with st.spinner("🔄 Loading AI engines..."):
@@ -787,7 +874,7 @@ if run_button and company_name:
 
     result = CreditAppraisalResult(company_name=company_name)
 
-    # ── Parse & Extract Documents ─────────────────────────────────────────
+    #   Parse & Extract Documents                     ─
     with st.spinner("📄 Parsing documents..."):
         parser = engines["parser"]
         extractor = engines["extractor"]
@@ -821,7 +908,7 @@ if run_button and company_name:
             if parsed_itr and not parsed_itr.error:
                 result.itr_data = extractor.extract_itr(parsed_itr)
 
-    # ── GST Reconciliation ────────────────────────────────────────────────
+    #   GST Reconciliation
     with st.spinner("🔍 Running GST reconciliation..."):
         if gstr_2a_file and gstr_3b_file:
             parsed_2a = save_and_parse(gstr_2a_file)
@@ -843,7 +930,7 @@ if run_button and company_name:
                         "GSTR-2A and 3B for full reconciliation."
             )
 
-    # ── Research ──────────────────────────────────────────────────────────
+    #   Research
     with st.spinner("🔎 Researching company..."):
         if use_mock_research:
             result.research = engines["researcher"].research_with_mock(
@@ -854,7 +941,7 @@ if run_button and company_name:
                 company_name, promoter_name
             )
 
-    # ── Qualitative Inputs ────────────────────────────────────────────────
+    #   Qualitative Inputs
     result.qualitative_inputs = QualitativeInputs(
         site_visit_notes=site_visit_notes,
         management_interview_notes=management_notes,
@@ -865,19 +952,19 @@ if run_button and company_name:
         promoter_score=promoter_score
     )
 
-    # ── Five Cs ───────────────────────────────────────────────────────────
+    #   Five Cs                              ─
     with st.spinner("📊 Running Five Cs analysis..."):
         result.five_cs = engines["five_cs"].analyze(result)
 
-    # ── XGBoost Risk Score ────────────────────────────────────────────────
+    #   XGBoost Risk Score
     with st.spinner("🤖 Scoring with XGBoost + SHAP..."):
         result.risk_prediction = engines["risk_engine"].score(result)
 
-    # ── LLM Reasoning ─────────────────────────────────────────────────────
+    #   LLM Reasoning                           ─
     with st.spinner("🧠 Running AI reasoning (Groq LLaMA)..."):
         result = engines["agent"].analyze(result)
 
-    # ── Generate Reports ──────────────────────────────────────────────────
+    #   Generate Reports
     with st.spinner("📄 Generating PDF and DOCX reports..."):
         paths = engines["cam"].generate_both(result)
         st.session_state["pdf_path"] = paths["pdf"]
