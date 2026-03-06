@@ -24,8 +24,8 @@ OLLAMA_EMBED_MODEL = "nomic-embed-text"
 
 # Groq settings (cloud, free tier, faster)
 # Get your free key at: https://console.groq.com
-GROQ_API_KEY = os.getenv(
-    "GROQ_API_KEY", "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")
+# NOTE: Do NOT hardcode real keys here. Set GROQ_API_KEY in your environment.
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # Shared LLM params
