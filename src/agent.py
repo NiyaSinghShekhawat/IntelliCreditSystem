@@ -8,14 +8,12 @@ from config import (
 )
 from src.rag import RAGEngine
 from src.prompts import (
-    CREDIT_ANALYSIS_PROMPT, FIVE_CS_PROMPT,
-    EARLY_WARNING_PROMPT, QUALITATIVE_ADJUSTMENT_PROMPT,
-    CAM_SUMMARY_PROMPT, format_financial_data,
-    format_research_data, format_qualitative_data
+    CREDIT_ANALYSIS_PROMPT,
+    format_financial_data, format_research_data, format_qualitative_data
 )
 from src.schemas import (
     CreditAppraisalResult, RiskPrediction, QualitativeInputs,
-    RiskCategory, DecisionType, SHAPFactor
+    RiskCategory, DecisionType
 )
 from typing import Optional
 import sys
@@ -26,9 +24,19 @@ sys.path.insert(0, str(ROOT_DIR))
 
 class CreditAgent:
     """
-    The AI brain of Intelli-Credit.
-    Connects LLM (Ollama or Groq) with RAG, prompts,
-    and structured financial data to produce credit decisions.
+    The AI brain of IntelliCredit.
+    Uses Groq LLaMA (or Ollama) to generate a structured reasoning chain
+    and extract early warning signals.
+
+    BUG FIX 1 (critical): The agent NO LONGER overwrites risk_prediction.
+    Previously agent.analyze() called _parse_reasoning_to_prediction() which
+    ran its own rule-based scorer and stomped on the XGBoost + SHAP output
+    produced by risk_engine.score(). The agent's job is only:
+      1. Generate reasoning_chain text (LLM narrative)
+      2. Extract decisive_factor and early_warning_signals from that text
+      3. Patch those fields onto the existing risk_prediction
+    The risk_score, risk_category, loan_limit, SHAP factors all come from
+    risk_engine.py and are never touched here.
     """
 
     def __init__(self):
@@ -39,14 +47,11 @@ class CreditAgent:
     # ─── LLM INITIALIZATION ──────────────────────────────────────────────────
 
     def _init_llm(self):
-        """Initialize LLM based on config — Ollama or Groq"""
         if LLM_BACKEND == "groq":
             return self._init_groq()
-        else:
-            return self._init_ollama()
+        return self._init_ollama()
 
     def _init_ollama(self):
-        """Initialize local Ollama LLM"""
         try:
             from langchain_ollama import OllamaLLM
             llm = OllamaLLM(
@@ -57,12 +62,10 @@ class CreditAgent:
             print(f"Ollama LLM ready: {OLLAMA_MODEL}")
             return llm
         except Exception as e:
-            print(f"Ollama failed: {e}")
-            print("Falling back to Groq...")
+            print(f"Ollama failed: {e}. Falling back to Groq...")
             return self._init_groq()
 
     def _init_groq(self):
-        """Initialize Groq cloud LLM"""
         try:
             from langchain_groq import ChatGroq
             llm = ChatGroq(
@@ -81,284 +84,165 @@ class CreditAgent:
 
     def analyze(self, result: CreditAppraisalResult) -> CreditAppraisalResult:
         """
-        Main entry point. Pass in a CreditAppraisalResult with
-        financial data already extracted. Returns it with LLM
-        reasoning, risk prediction, and early warning signals added.
-        """
-        print(f"\nRunning AI analysis for: {result.company_name}")
+        Add LLM reasoning to an already-scored CreditAppraisalResult.
 
-        # Step 1: Format all data for prompts
+        IMPORTANT: risk_prediction must already be set by risk_engine.score()
+        before calling this. This method only adds:
+          - result.reasoning_chain  (narrative text)
+          - result.risk_prediction.decisive_factor
+          - result.risk_prediction.early_warning_signals
+          - result.risk_prediction.explanation
+
+        It does NOT change risk_score, risk_category, decision, loan_limit,
+        interest_rate, or top_shap_factors — those belong to risk_engine.
+        """
+        print(f"\nRunning AI reasoning for: {result.company_name}")
+
+        if result.risk_prediction is None:
+            print("WARNING: risk_prediction not set. Run risk_engine.score() first.")
+
+        # Step 1: Format all data for prompt
+        # Pass derived_financials so the LLM sees computed ratios (Bug Fix 4)
         financial_text = format_financial_data(
             gst_data=result.gst_data,
             bank_data=result.bank_data,
             itr_data=result.itr_data,
-            reconciliation=result.gst_reconciliation
+            reconciliation=result.gst_reconciliation,
+            derived=result.derived_financials
         )
-
         research_text = format_research_data(result.research)
         qualitative_text = format_qualitative_data(result.qualitative_inputs)
 
-        # Step 2: Get RAG context
+        # Step 2: RAG context (documents ingested earlier in app.py pipeline)
         rag_context = self.rag.build_context(
             "credit risk assessment GST turnover bank balance ITC",
             company_name=result.company_name
         )
 
-        # Step 3: Run main credit analysis
-        print("Running credit analysis...")
+        # Step 3: Extract pred values here (result is in scope)
+        pred = result.risk_prediction
+        loan_limit_lakhs = (pred.loan_limit_inr /
+                            100000) if pred and pred.loan_limit_inr else 0
+        interest_rate = pred.interest_rate if pred else 12.0
+        risk_score = pred.risk_score if pred else 0.5
+        risk_category = pred.risk_category.value if pred and pred.risk_category else "MEDIUM"
+
+        # Step 4: Run LLM
+        print("Running LLM reasoning chain...")
         reasoning = self._run_credit_analysis(
-            financial_text, research_text,
-            qualitative_text, rag_context
+            financial_text, research_text, qualitative_text, rag_context,
+            loan_limit_lakhs=loan_limit_lakhs,
+            interest_rate=interest_rate,
+            risk_score=risk_score,
+            risk_category=risk_category,
         )
         result.reasoning_chain = reasoning
 
-        # Step 4: Parse LLM output into structured prediction
-        print("Parsing AI decision...")
-        prediction = self._parse_reasoning_to_prediction(
-            reasoning, result
-        )
+        # Step 5: Extract structured fields from LLM text and PATCH onto
+        # the existing risk_prediction (do NOT replace it)
+        print("Extracting early warnings from LLM output...")
+        self._patch_prediction_from_reasoning(reasoning, result)
 
-        # Step 5: Apply qualitative adjustment if officer notes exist
-        if result.qualitative_inputs and result.qualitative_inputs.site_visit_notes:
-            print("Applying qualitative adjustment...")
-            prediction = self._apply_qualitative_adjustment(
-                prediction, result.qualitative_inputs
+        # Step 6: Apply qualitative adjustment if officer site visit notes exist
+        if (result.qualitative_inputs
+                and result.qualitative_inputs.site_visit_notes
+                and result.risk_prediction):
+            print("Applying qualitative site-visit adjustment...")
+            result.risk_prediction = self._apply_qualitative_adjustment(
+                result.risk_prediction, result.qualitative_inputs
             )
 
-        result.risk_prediction = prediction
-        print(f"Analysis complete. Decision: {prediction.decision}")
+        decision = result.risk_prediction.decision if result.risk_prediction else "N/A"
+        print(f"Agent complete. Decision unchanged from XGBoost: {decision}")
         return result
 
-    # ─── CREDIT ANALYSIS ─────────────────────────────────────────────────────
+    # ─── LLM CALL ────────────────────────────────────────────────────────────
 
-    def _run_credit_analysis(self, financial_text: str,
-                             research_text: str,
-                             qualitative_text: str,
-                             rag_context: str) -> str:
-        """Run the main credit analysis prompt through LLM"""
+    def _run_credit_analysis(self, financial_text: str, research_text: str,
+                             qualitative_text: str, rag_context: str,
+                             loan_limit_lakhs: float = 0,
+                             interest_rate: float = 12.0,
+                             risk_score: float = 0.5,
+                             risk_category: str = "MEDIUM") -> str:
         if not self.llm:
             return self._fallback_reasoning(financial_text)
 
         prompt = CREDIT_ANALYSIS_PROMPT.format(
             financial_data=financial_text,
             research_data=research_text,
-            qualitative_data=qualitative_text
+            qualitative_data=qualitative_text,
+            loan_limit_lakhs=loan_limit_lakhs,
+            interest_rate=interest_rate,
+            risk_score=risk_score,
+            risk_category=risk_category,
         )
 
-        # Add RAG context if available
         if rag_context and "No relevant" not in rag_context:
             prompt += f"\n\nADDITIONAL DOCUMENT CONTEXT:\n{rag_context}"
 
         try:
             response = self.llm.invoke(prompt)
-            # Handle both string and message responses
-            if hasattr(response, 'content'):
-                return response.content
-            return str(response)
+            return response.content if hasattr(response, 'content') else str(response)
         except Exception as e:
             print(f"LLM error: {e}")
             return self._fallback_reasoning(financial_text)
 
-    # ─── PARSE LLM OUTPUT ────────────────────────────────────────────────────
+    # ─── PATCH PREDICTION (not replace) ──────────────────────────────────────
 
-    def _parse_reasoning_to_prediction(
-            self, reasoning: str,
-            result: CreditAppraisalResult) -> RiskPrediction:
+    def _patch_prediction_from_reasoning(
+            self, reasoning: str, result: CreditAppraisalResult):
         """
-        Parse the LLM's structured text output into a
-        RiskPrediction object with score, decision, limit etc.
+        Extract decisive_factor, early_warning_signals, and explanation
+        from LLM text and write them onto the existing risk_prediction.
+
+        BUG FIX 1: This replaces the old _parse_reasoning_to_prediction()
+        which was rebuilding the entire RiskPrediction from scratch using
+        a simple rule-based scorer, silently discarding XGBoost output.
+
+        BUG FIX 3: All decision string comparisons now use .upper() so
+        LLaMA's all-caps output ("DECISION: APPROVE") is handled correctly.
+        Previously only "Approve" and "approve" were checked, causing all
+        LLaMA responses to fall through to CONDITIONAL as the default.
         """
         import re
 
-        # Extract decision
-        decision = DecisionType.CONDITIONAL
-        if "DECISION: Approve" in reasoning or "DECISION: approve" in reasoning:
-            decision = DecisionType.APPROVE
-        elif "DECISION: Reject" in reasoning or "DECISION: reject" in reasoning:
-            decision = DecisionType.REJECT
-
-        # Extract loan limit
-        loan_limit = 0.0
-        limit_match = re.search(
-            r'LIMIT:\s*Rs\.?\s*([\d,]+(?:\.\d+)?)\s*(crore|cr|lakh|lakhs|L)?',
-            reasoning, re.IGNORECASE
-        )
-        if limit_match:
-            amount_str = limit_match.group(1).replace(',', '')
-            unit = ""
-            try:
-                unit = (limit_match.group(2) or "").lower()
-            except IndexError:
-                unit = ""
-            amount = float(amount_str)
-
-            if "crore" in unit or unit == "cr":
-                loan_limit = amount * 10_000_000
-            elif "lakh" in unit or unit == "l":
-                loan_limit = amount * 100_000
-            elif amount < 1000:
-                loan_limit = amount * 100_000
-            else:
-                loan_limit = amount
-        else:
-            loan_limit = self._calculate_loan_limit(result)
-
-        # Cap at maximum
-        # loan_limit = min(loan_limit, MAX_LOAN_LIMIT_INR)
-        # No loan for rejected cases
-        if decision == DecisionType.REJECT:
-            loan_limit = 0.0
-        else:
-            loan_limit = min(loan_limit, MAX_LOAN_LIMIT_INR)
-
-        # Extract interest rate
-        rate = BASE_INTEREST_RATE
-        # rate_match = re.search(
-        #     r'RATE:\s*([\d.]+)%', reasoning, re.IGNORECASE
-        # )
-        # if rate_match:
-        #     rate = float(rate_match.group(1))
-        rate = BASE_INTEREST_RATE
-        if decision == DecisionType.REJECT:
-            rate = 0.0
-        else:
-            rate_match = re.search(
-                r'RATE:\s*([\d.]+)%', reasoning, re.IGNORECASE
-            )
-            if rate_match:
-                rate = float(rate_match.group(1))
+        if result.risk_prediction is None:
+            return
 
         # Extract decisive factor
-        decisive_factor = ""
-        df_match = re.search(
-            r'DECISIVE FACTOR:\s*(.+?)(?:\n|$)', reasoning
-        )
+        df_match = re.search(r'DECISIVE FACTOR:\s*(.+?)(?:\n|$)', reasoning)
         if df_match:
-            decisive_factor = df_match.group(1).strip()
+            result.risk_prediction.decisive_factor = df_match.group(1).strip()
 
         # Extract early warning signals
-        warnings = []
         warning_section = re.findall(
-            r'EARLY WARNING SIGNALS:\s*((?:-.+\n?)+)',
+            r'EARLY WARNING SIGNALS:\s*((?:[-•*]\s*.+\n?)+)',
             reasoning, re.IGNORECASE
         )
         if warning_section:
             warnings = [
-                w.strip().lstrip('- ')
+                w.strip().lstrip('-•* ')
                 for w in warning_section[0].strip().split('\n')
                 if w.strip()
             ]
+            result.risk_prediction.early_warning_signals = warnings[:5]
 
-        # Calculate risk score from decision + data
-        risk_score = self._calculate_risk_score(result, decision)
+        # Set explanation snippet
+        result.risk_prediction.explanation = reasoning[:500]
 
-        # Determine risk category
-        if risk_score <= RISK_THRESHOLDS["low"]:
-            risk_category = RiskCategory.LOW
-        elif risk_score <= RISK_THRESHOLDS["medium"]:
-            risk_category = RiskCategory.MEDIUM
+        # BUG FIX 3: Case-insensitive decision check.
+        # Note: we do NOT use this to change risk_score/decision — that belongs
+        # to risk_engine. We only log it for transparency / debugging.
+        reasoning_upper = reasoning.upper()
+        if "DECISION: APPROVE" in reasoning_upper and "CONDITIONAL" not in reasoning_upper:
+            llm_decision = "APPROVE"
+        elif "DECISION: REJECT" in reasoning_upper:
+            llm_decision = "REJECT"
         else:
-            risk_category = RiskCategory.HIGH
+            llm_decision = "CONDITIONAL"
 
-        # Build SHAP-style factors
-        shap_factors = self._build_shap_factors(result, risk_score)
-
-        return RiskPrediction(
-            risk_score=round(risk_score, 3),
-            risk_category=risk_category,
-            decision=decision,
-            loan_limit_inr=loan_limit,
-            interest_rate=rate,
-            top_shap_factors=shap_factors,
-            decisive_factor=decisive_factor,
-            early_warning_signals=warnings[:5],
-            explanation=reasoning[:500]
-        )
-
-    # ─── RISK SCORE CALCULATION ───────────────────────────────────────────────
-
-    def _calculate_risk_score(self, result: CreditAppraisalResult,
-                              decision: DecisionType) -> float:
-        """
-        Calculate a 0-1 risk score from extracted data.
-        Higher = more risky.
-        """
-        score = 0.5  # Start neutral
-
-        # GST reconciliation flags
-        if result.gst_reconciliation:
-            if result.gst_reconciliation.risk_flag:
-                score += 0.15
-            if result.gst_reconciliation.circular_trading_flag:
-                score += 0.10
-            variance = result.gst_reconciliation.variance_pct
-            if variance > 25:
-                score += 0.10
-            elif variance > 10:
-                score += 0.05
-
-        # Bank statement signals
-        if result.bank_data:
-            bounces = result.bank_data.emi_bounce_count
-            if bounces > 3:
-                score += 0.10
-            elif bounces > 0:
-                score += 0.05
-
-            # Low average balance relative to credits
-            if result.bank_data.total_credits > 0:
-                balance_ratio = (result.bank_data.average_monthly_balance /
-                                 result.bank_data.total_credits)
-                if balance_ratio < 0.05:
-                    score += 0.05
-
-        # Research flags
-        if result.research:
-            score += result.research.news_risk_score * 0.02
-            if result.research.litigation_found:
-                score += 0.10
-            if result.research.rbi_sebi_actions:
-                score += 0.15
-
-        # Qualitative inputs
-        if result.qualitative_inputs:
-            de_ratio = result.qualitative_inputs.debt_equity_ratio
-            if de_ratio > 3:
-                score += 0.10
-            elif de_ratio > 2:
-                score += 0.05
-
-            coverage = result.qualitative_inputs.collateral_coverage
-            if coverage < 0.5:
-                score += 0.05
-
-        # Adjust based on LLM decision
-        if decision == DecisionType.APPROVE:
-            score = min(score, 0.45)
-        elif decision == DecisionType.REJECT:
-            score = max(score, 0.75)
-
-        return round(min(max(score, 0.0), 1.0), 3)
-
-    # ─── LOAN LIMIT CALCULATION ───────────────────────────────────────────────
-
-    def _calculate_loan_limit(self,
-                              result: CreditAppraisalResult) -> float:
-        """Calculate loan limit from financial data"""
-        base = 0.0
-
-        if result.gst_data and result.gst_data.turnover > 0:
-            base = result.gst_data.turnover * 0.20  # 20% of turnover
-
-        if result.bank_data and result.bank_data.total_credits > 0:
-            bank_based = result.bank_data.total_credits * 0.15
-            base = max(base, bank_based)
-
-        if result.itr_data and result.itr_data.net_income > 0:
-            itr_based = result.itr_data.net_income * 0.30
-            base = max(base, itr_based)
-
-        return min(base, MAX_LOAN_LIMIT_INR)
+        print(f"LLM narrative decision: {llm_decision} | "
+              f"XGBoost decision kept: {result.risk_prediction.decision}")
 
     # ─── QUALITATIVE ADJUSTMENT ───────────────────────────────────────────────
 
@@ -367,19 +251,15 @@ class CreditAgent:
             qualitative: QualitativeInputs) -> RiskPrediction:
         """
         Adjust risk score based on officer's site visit notes.
-        This is the score delta feature shown in the UI.
+        Max ±0.25 shift as defined in config.MAX_QUALITATIVE_ADJUSTMENT.
         """
         notes = qualitative.site_visit_notes.lower()
-        adjustment = 0.0
 
-        # Check for negative signals in notes
-        risk_hits = sum(
-            1 for kw in SITE_VISIT_RISK_KEYWORDS if kw in notes
-        )
+        risk_hits = sum(1 for kw in SITE_VISIT_RISK_KEYWORDS if kw in notes)
         positive_hits = sum(
-            1 for kw in SITE_VISIT_POSITIVE_KEYWORDS if kw in notes
-        )
+            1 for kw in SITE_VISIT_POSITIVE_KEYWORDS if kw in notes)
 
+        adjustment = 0.0
         if risk_hits > positive_hits:
             adjustment = min(risk_hits * 0.05, MAX_QUALITATIVE_ADJUSTMENT)
         elif positive_hits > risk_hits:
@@ -389,11 +269,8 @@ class CreditAgent:
             return prediction
 
         base_score = prediction.risk_score
-        new_score = round(
-            min(max(base_score + adjustment, 0.0), 1.0), 3
-        )
+        new_score = round(min(max(base_score + adjustment, 0.0), 1.0), 3)
 
-        # Update category based on new score
         if new_score <= RISK_THRESHOLDS["low"]:
             new_category = RiskCategory.LOW
         elif new_score <= RISK_THRESHOLDS["medium"]:
@@ -401,7 +278,6 @@ class CreditAgent:
         else:
             new_category = RiskCategory.HIGH
 
-        # Update decision if score crosses threshold
         new_decision = prediction.decision
         if new_score >= AUTO_REJECT_THRESHOLD:
             new_decision = DecisionType.REJECT
@@ -412,73 +288,13 @@ class CreditAgent:
         prediction.risk_category = new_category
         prediction.decision = new_decision
 
-        print(f"Qualitative adjustment: {base_score} -> {new_score} "
-              f"(delta: {adjustment:+.2f})")
-
+        print(
+            f"Qualitative adjustment: {base_score} → {new_score} (delta: {adjustment:+.3f})")
         return prediction
-
-    # ─── SHAP-STYLE FACTORS ───────────────────────────────────────────────────
-
-    def _build_shap_factors(self, result: CreditAppraisalResult,
-                            risk_score: float) -> list:
-        """Build SHAP-style explanation factors"""
-        factors = []
-
-        if result.gst_reconciliation and result.gst_reconciliation.risk_flag:
-            factors.append(SHAPFactor(
-                feature_name="gst_mismatch",
-                shap_value=0.15,
-                direction="increases risk",
-                display_name="GST 2A vs 3B Mismatch"
-            ))
-
-        if result.bank_data and result.bank_data.emi_bounce_count > 0:
-            factors.append(SHAPFactor(
-                feature_name="emi_bounces",
-                shap_value=0.10,
-                direction="increases risk",
-                display_name=f"EMI Bounces ({result.bank_data.emi_bounce_count})"
-            ))
-
-        if result.research and result.research.litigation_found:
-            factors.append(SHAPFactor(
-                feature_name="litigation",
-                shap_value=0.10,
-                direction="increases risk",
-                display_name="Active Litigation Found"
-            ))
-
-        if result.qualitative_inputs:
-            de = result.qualitative_inputs.debt_equity_ratio
-            if de < 2:
-                factors.append(SHAPFactor(
-                    feature_name="debt_equity",
-                    shap_value=0.08,
-                    direction="decreases risk",
-                    display_name=f"Healthy D/E Ratio ({de})"
-                ))
-            else:
-                factors.append(SHAPFactor(
-                    feature_name="debt_equity",
-                    shap_value=0.08,
-                    direction="increases risk",
-                    display_name=f"High D/E Ratio ({de})"
-                ))
-
-        if result.gst_data and result.gst_data.turnover > 0:
-            factors.append(SHAPFactor(
-                feature_name="gst_turnover",
-                shap_value=0.07,
-                direction="decreases risk",
-                display_name=f"GST Turnover Rs.{result.gst_data.turnover:,.0f}"
-            ))
-
-        return factors[:4]  # Return top 4
 
     # ─── FALLBACK ────────────────────────────────────────────────────────────
 
     def _fallback_reasoning(self, financial_text: str) -> str:
-        """Used when LLM is unavailable — rule-based reasoning"""
         return f"""
 DECISION: Conditional Approval
 LIMIT: Rs.25 lakhs
@@ -501,77 +317,72 @@ LOAN CONDITIONS:
 - Submit audited financials within 30 days
 - Collateral documentation required
 
-NOTE: This is a rule-based fallback. LLM was unavailable.
+NOTE: LLM unavailable — rule-based fallback used.
 Financial Data Reviewed:
 {financial_text[:500]}
 """
 
 
-# ─── QUICK TEST ──────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     from src.schemas import (
         CreditAppraisalResult, GSTData, BankStatementData,
-        GSTReconciliationResult, QualitativeInputs
+        GSTReconciliationResult, QualitativeInputs, RiskPrediction,
+        RiskCategory, DecisionType
     )
 
-    print("="*50)
-    print("TEST: Credit Agent")
-    print("="*50)
+    print("=" * 50)
+    print("TEST: Credit Agent (agent only adds reasoning — does not rescore)")
+    print("=" * 50)
 
     agent = CreditAgent()
 
-    # Build a test case
     test_result = CreditAppraisalResult(
         company_name="ABC Private Limited",
         gst_data=GSTData(
             gstin="27AABCU9603R1ZX",
             company_name="ABC Private Limited",
-            turnover=4500000,
-            total_tax=500000,
-            itc_claimed=80000,
-            filing_regular=True
+            turnover=4500000, total_tax=500000,
+            itc_claimed=80000, filing_regular=True
         ),
         bank_data=BankStatementData(
-            bank_name="HDFC",
-            total_credits=4200000,
-            total_debits=3800000,
-            average_monthly_balance=350000,
+            bank_name="HDFC", total_credits=4200000,
+            total_debits=3800000, average_monthly_balance=350000,
             emi_bounce_count=1
         ),
         gst_reconciliation=GSTReconciliationResult(
-            total_mismatches=1,
-            risk_flag=False,
-            variance_pct=8.5,
-            circular_trading_flag=False,
-            summary="Minor variance in ITC claims, within acceptable range."
+            total_mismatches=1, risk_flag=False,
+            variance_pct=8.5, circular_trading_flag=False,
+            summary="Minor variance in ITC claims."
         ),
         qualitative_inputs=QualitativeInputs(
-            site_visit_notes="Factory running at full capacity. Good condition. New orders from Tata Motors.",
-            debt_equity_ratio=1.5,
-            collateral_coverage=0.75,
-            sector_risk_score=4,
-            promoter_score=7
+            site_visit_notes="Factory running at full capacity. New orders from Tata Motors.",
+            debt_equity_ratio=1.5, collateral_coverage=0.75,
+            net_worth_inr=5000000, sector_risk_score=4, promoter_score=7
+        ),
+        # Simulate pre-existing XGBoost prediction
+        risk_prediction=RiskPrediction(
+            risk_score=0.38,
+            risk_category=RiskCategory.MEDIUM,
+            decision=DecisionType.CONDITIONAL,
+            loan_limit_inr=2500000,
+            interest_rate=11.5,
+            top_shap_factors=[],
+            decisive_factor="",
+            early_warning_signals=[],
+            explanation=""
         )
     )
 
-    # Run analysis
     final = agent.analyze(test_result)
 
-    print("\n" + "="*50)
-    print("ANALYSIS RESULT")
-    print("="*50)
-    print(f"Decision:      {final.risk_prediction.decision}")
-    print(f"Risk Score:    {final.risk_prediction.risk_score}")
-    print(f"Risk Category: {final.risk_prediction.risk_category}")
-    print(f"Loan Limit:    Rs.{final.risk_prediction.loan_limit_inr:,.0f}")
-    print(f"Interest Rate: {final.risk_prediction.interest_rate}%")
-    print(f"\nDecisive Factor: {final.risk_prediction.decisive_factor}")
-    print(f"\nEarly Warnings:")
-    for w in final.risk_prediction.early_warning_signals:
-        print(f"  - {w}")
-    print(f"\nSHAP Factors:")
-    for f in final.risk_prediction.top_shap_factors:
-        print(f"  - {f.display_name}: {f.direction} ({f.shap_value})")
-    print(f"\nReasoning Chain (first 500 chars):")
-    print(final.reasoning_chain[:500])
+    print("\n" + "=" * 50)
+    print("RESULT — XGBoost prediction should be unchanged:")
+    print("=" * 50)
+    pred = final.risk_prediction
+    print(f"Risk Score:    {pred.risk_score}  (should be 0.38)")
+    print(f"Decision:      {pred.decision}")
+    print(f"Loan Limit:    Rs.{pred.loan_limit_inr:,.0f}")
+    print(f"Decisive Factor: {pred.decisive_factor}")
+    print(f"Early Warnings: {pred.early_warning_signals}")
+    print(f"\nReasoning Chain (first 300 chars):")
+    print(final.reasoning_chain[:300])

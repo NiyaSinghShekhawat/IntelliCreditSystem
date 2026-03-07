@@ -8,7 +8,7 @@ ROOT_DIR = Path(__file__).parent
 sys.path.insert(0, str(ROOT_DIR))
 
 
-#  ─ PAGE CONFIG                               ─
+# ─── PAGE CONFIG ─────────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="IntelliCredit — AI Credit Engine",
@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-#  ─ CUSTOM CSS
+# ─── CUSTOM CSS ──────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
     .stApp { background: rgb(10,14,26); color: rgb(232,234,246); }
@@ -27,134 +27,79 @@ st.markdown("""
     }
     .main-header {
         background: linear-gradient(135deg, rgb(13,18,38), rgb(26,35,126), rgb(13,18,38));
-        padding: 2.5rem 2rem;
-        border-radius: 16px;
-        color: white;
-        text-align: center;
-        margin-bottom: 2rem;
+        padding: 2.5rem 2rem; border-radius: 16px; color: white;
+        text-align: center; margin-bottom: 2rem;
         border: 1px solid rgb(30,42,74);
         box-shadow: 0 8px 32px rgba(26,35,126,0.4);
     }
-    .main-header h1 {
-        font-size: 2.5rem;
-        font-weight: 800;
-        color: gold;
-        margin: 0;
-    }
+    .main-header h1 { font-size: 2.5rem; font-weight: 800; color: gold; margin: 0; }
     .main-header p { color: rgb(159,168,218); margin: 0.3rem 0 0 0; }
     .decision-approve {
         background: linear-gradient(135deg, rgb(10,46,10), rgb(27,94,32));
-        border: 1px solid rgb(76,175,80);
-        border-left: 6px solid rgb(76,175,80);
-        padding: 1.2rem 1.5rem;
-        border-radius: 12px;
-        font-size: 1.4rem;
-        font-weight: 800;
-        color: rgb(165,214,167);
+        border: 1px solid rgb(76,175,80); border-left: 6px solid rgb(76,175,80);
+        padding: 1.2rem 1.5rem; border-radius: 12px; font-size: 1.4rem;
+        font-weight: 800; color: rgb(165,214,167);
         box-shadow: 0 4px 20px rgba(76,175,80,0.2);
     }
     .decision-reject {
         background: linear-gradient(135deg, rgb(46,10,10), rgb(94,27,27));
-        border: 1px solid rgb(244,67,54);
-        border-left: 6px solid rgb(244,67,54);
-        padding: 1.2rem 1.5rem;
-        border-radius: 12px;
-        font-size: 1.4rem;
-        font-weight: 800;
-        color: rgb(239,154,154);
+        border: 1px solid rgb(244,67,54); border-left: 6px solid rgb(244,67,54);
+        padding: 1.2rem 1.5rem; border-radius: 12px; font-size: 1.4rem;
+        font-weight: 800; color: rgb(239,154,154);
         box-shadow: 0 4px 20px rgba(244,67,54,0.2);
     }
     .decision-conditional {
         background: linear-gradient(135deg, rgb(46,31,10), rgb(94,60,10));
-        border: 1px solid rgb(255,193,7);
-        border-left: 6px solid rgb(255,193,7);
-        padding: 1.2rem 1.5rem;
-        border-radius: 12px;
-        font-size: 1.4rem;
-        font-weight: 800;
-        color: rgb(255,224,130);
+        border: 1px solid rgb(255,193,7); border-left: 6px solid rgb(255,193,7);
+        padding: 1.2rem 1.5rem; border-radius: 12px; font-size: 1.4rem;
+        font-weight: 800; color: rgb(255,224,130);
         box-shadow: 0 4px 20px rgba(255,193,7,0.2);
     }
     [data-testid="metric-container"] {
         background: linear-gradient(135deg, rgb(13,18,38), rgb(20,29,53));
-        border: 1px solid rgb(30,42,74);
-        border-radius: 12px;
-        padding: 1rem;
+        border: 1px solid rgb(30,42,74); border-radius: 12px; padding: 1rem;
         box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     }
     [data-testid="metric-container"] label {
-        color: rgb(159,168,218) !important;
-        font-size: 0.8rem !important;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
+        color: rgb(159,168,218) !important; font-size: 0.8rem !important;
+        text-transform: uppercase; letter-spacing: 0.1em;
     }
     [data-testid="metric-container"] [data-testid="stMetricValue"] {
-        color: gold !important;
-        font-size: 1.8rem !important;
-        font-weight: 800 !important;
+        color: gold !important; font-size: 1.8rem !important; font-weight: 800 !important;
     }
     .warning-box {
         background: linear-gradient(135deg, rgb(26,20,0), rgb(42,32,0));
-        border-left: 4px solid rgb(255,193,7);
-        padding: 0.8rem 1rem;
-        border-radius: 8px;
-        margin: 0.4rem 0;
-        color: rgb(255,224,130);
-        font-size: 0.9rem;
+        border-left: 4px solid rgb(255,193,7); padding: 0.8rem 1rem;
+        border-radius: 8px; margin: 0.4rem 0; color: rgb(255,224,130); font-size: 0.9rem;
     }
     .flag-box {
         background: linear-gradient(135deg, rgb(26,0,0), rgb(42,0,0));
-        border-left: 4px solid rgb(244,67,54);
-        padding: 0.8rem 1rem;
-        border-radius: 8px;
-        margin: 0.4rem 0;
-        color: rgb(239,154,154);
-        font-size: 0.9rem;
+        border-left: 4px solid rgb(244,67,54); padding: 0.8rem 1rem;
+        border-radius: 8px; margin: 0.4rem 0; color: rgb(239,154,154); font-size: 0.9rem;
     }
     .stTabs [data-baseweb="tab-list"] {
-        background: rgb(13,18,38);
-        border-radius: 10px;
-        padding: 4px;
-        gap: 4px;
+        background: rgb(13,18,38); border-radius: 10px; padding: 4px; gap: 4px;
     }
     .stTabs [data-baseweb="tab"] {
-        background: transparent;
-        color: rgb(159,168,218);
-        border-radius: 8px;
-        font-weight: 600;
+        background: transparent; color: rgb(159,168,218);
+        border-radius: 8px; font-weight: 600;
     }
-    .stTabs [aria-selected="true"] {
-        background: rgb(26,35,126) !important;
-        color: gold !important;
-    }
+    .stTabs [aria-selected="true"] { background: rgb(26,35,126) !important; color: gold !important; }
     .stButton > button {
         background: linear-gradient(135deg, rgb(26,35,126), rgb(40,53,147));
-        color: gold;
-        border: 1px solid rgb(57,73,171);
-        border-radius: 10px;
-        font-weight: 700;
-        font-size: 1rem;
-        letter-spacing: 0.05em;
-        padding: 0.6rem 1rem;
-        box-shadow: 0 4px 12px rgba(26,35,126,0.4);
+        color: gold; border: 1px solid rgb(57,73,171); border-radius: 10px;
+        font-weight: 700; font-size: 1rem; letter-spacing: 0.05em;
+        padding: 0.6rem 1rem; box-shadow: 0 4px 12px rgba(26,35,126,0.4);
     }
     .news-negative {
-        background: rgb(26,5,5);
-        border-left: 3px solid rgb(244,67,54);
-        padding: 0.6rem 0.8rem;
-        border-radius: 6px;
-        margin: 0.3rem 0;
-        font-size: 0.85rem;
-        color: rgb(239,154,154);
+        background: rgb(26,5,5); border-left: 3px solid rgb(244,67,54);
+        padding: 0.6rem 0.8rem; border-radius: 6px; margin: 0.3rem 0;
+        font-size: 0.85rem; color: rgb(239,154,154);
     }
     .news-positive {
-        background: rgb(5,26,5);
-        border-left: 3px solid rgb(76,175,80);
-        padding: 0.6rem 0.8rem;
-        border-radius: 6px;
-        margin: 0.3rem 0;
-        font-size: 0.85rem;
-        color: rgb(165,214,167);
+        background: rgb(5,26,5); border-left: 3px solid rgb(76,175,80);
+        padding: 0.6rem 0.8rem; border-radius: 6px; margin: 0.3rem 0;
+        font-size: 0.85rem; color: rgb(165,214,167);
     }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -162,25 +107,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-#  ─ HEADER
+# ─── HEADER ──────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="main-header">
     <h1>🏦 IntelliCredit</h1>
-    <p style="font-size:1.1rem;">
-        AI-Powered Credit Appraisal Engine for Indian Banks
-    </p>
+    <p style="font-size:1.1rem;">AI-Powered Credit Appraisal Engine for Indian Banks</p>
     <p style="font-size:0.8rem; color:rgb(121,134,203); margin-top:0.5rem;">
-        GST Reconciliation &nbsp;•&nbsp;
-        XGBoost + SHAP Scoring &nbsp;•&nbsp;
-        Five Cs Analysis &nbsp;•&nbsp;
-        CAM Generation &nbsp;•&nbsp;
-        Live News Research
+        GST Reconciliation &nbsp;•&nbsp; XGBoost + SHAP Scoring &nbsp;•&nbsp;
+        Five Cs Analysis &nbsp;•&nbsp; CAM Generation &nbsp;•&nbsp; Live News Research
     </p>
 </div>
 """, unsafe_allow_html=True)
 
-#  ─ IMPORTS (lazy to speed up startup)
 
+# ─── ENGINE LOADER ───────────────────────────────────────────────────────────
 
 @st.cache_resource
 def load_engines():
@@ -204,36 +144,14 @@ def load_engines():
     }
 
 
-#  ─ SIDEBAR                                 ─
-    # Make demo available outside sidebar
-global demo
+# ─── SIDEBAR ─────────────────────────────────────────────────────────────────
+
 demo = st.session_state.get("demo", {})
 
 with st.sidebar:
     st.markdown("### 📋 Loan Application")
     st.markdown("---")
 
-    # company_name = st.text_input(
-    #     "Company Name *",
-    #     placeholder="ABC Private Limited"
-    # )
-    # promoter_name = st.text_input(
-    #     "Promoter / Director Name",
-    #     placeholder="Mr. Rajesh Kumar"
-    # )
-    # loan_amount_requested = st.number_input(
-    #     "Loan Amount Requested (Rs.)",
-    #     min_value=100000,
-    #     max_value=50000000,
-    #     value=2500000,
-    #     step=100000,
-    #     format="%d"
-    # )
-    # loan_purpose = st.selectbox(
-    #     "Loan Purpose",
-    #     ["Working Capital", "Term Loan", "Machinery",
-    #      "Expansion", "Trade Finance", "Other"]
-    # )
     company_name = st.text_input(
         "Company Name *",
         value=demo.get("company", ""),
@@ -246,11 +164,9 @@ with st.sidebar:
     )
     loan_amount_requested = st.number_input(
         "Loan Amount Requested (Rs.)",
-        min_value=100000,
-        max_value=50000000,
+        min_value=100000, max_value=500_000_000,   # ₹50 Cr max
         value=demo.get("loan", 2500000),
-        step=100000,
-        format="%d"
+        step=100000, format="%d"
     )
     purpose_options = ["Working Capital", "Term Loan", "Machinery",
                        "Expansion", "Trade Finance", "Other"]
@@ -258,13 +174,8 @@ with st.sidebar:
     purpose_index = purpose_options.index(default_purpose) \
         if default_purpose in purpose_options else 0
     loan_purpose = st.selectbox(
-        "Loan Purpose",
-        purpose_options,
-        index=purpose_index
-    )
+        "Loan Purpose", purpose_options, index=purpose_index)
 
-    # st.markdown("---")
-    # st.markdown("### ⚙️ Settings")
     st.markdown("---")
     st.markdown("### 🎯 Demo Mode")
     st.markdown("Auto-fill inputs for judges:")
@@ -277,53 +188,33 @@ with st.sidebar:
     with col_d3:
         demo_high = st.button("🔴 High\nRisk", use_container_width=True)
 
-    # Demo scenario definitions
     DEMO_SCENARIOS = {
         "low": {
-            "company": "Safe Industries Pvt Ltd",
-            "promoter": "Rajesh Mehta",
-            "loan": 2500000,
-            "purpose": "Working Capital",
+            "company": "Safe Industries Pvt Ltd", "promoter": "Rajesh Mehta",
+            "loan": 2500000, "purpose": "Working Capital",
             "site_visit": "Factory running at full capacity. New orders from Tata Motors. Expanding warehouse. Good condition machinery.",
             "mgmt": "Promoter has 15 years experience. Clear business plan. Very cooperative during interview.",
-            "de_ratio": 0.8,
-            "collateral": 120,
-            "net_worth": 15000000,
-            "promoter_score": 9,
-            "sector_risk": 3,
-            "mock_level": "low"
+            "de_ratio": 0.8, "collateral": 120, "net_worth": 15000000,
+            "promoter_score": 9, "sector_risk": 3, "mock_level": "low"
         },
         "medium": {
-            "company": "ABC Manufacturing Pvt Ltd",
-            "promoter": "Suresh Kumar",
-            "loan": 5000000,
-            "purpose": "Machinery",
+            "company": "ABC Manufacturing Pvt Ltd", "promoter": "Suresh Kumar",
+            "loan": 5000000, "purpose": "Machinery",
             "site_visit": "Factory operational but running at 60% capacity. Some idle machinery observed. Management cooperative.",
             "mgmt": "Promoter has 8 years experience. Adequate business plan presented.",
-            "de_ratio": 1.8,
-            "collateral": 80,
-            "net_worth": 5000000,
-            "promoter_score": 6,
-            "sector_risk": 5,
-            "mock_level": "medium"
+            "de_ratio": 1.8, "collateral": 80, "net_worth": 5000000,
+            "promoter_score": 6, "sector_risk": 5, "mock_level": "medium"
         },
         "high": {
-            "company": "XYZ Traders Pvt Ltd",
-            "promoter": "Vikram Shah",
-            "loan": 10000000,
-            "purpose": "Working Capital",
+            "company": "XYZ Traders Pvt Ltd", "promoter": "Vikram Shah",
+            "loan": 10000000, "purpose": "Working Capital",
             "site_visit": "Factory found shut during visit. Idle machinery observed. Poor condition. Workers said no orders since 3 months.",
             "mgmt": "Promoter was evasive during interview. Could not explain fund utilization.",
-            "de_ratio": 4.2,
-            "collateral": 30,
-            "net_worth": 500000,
-            "promoter_score": 2,
-            "sector_risk": 9,
-            "mock_level": "high"
+            "de_ratio": 4.2, "collateral": 30, "net_worth": 500000,
+            "promoter_score": 2, "sector_risk": 9, "mock_level": "high"
         }
     }
 
-    # Set demo scenario in session state
     if demo_low:
         st.session_state["demo"] = DEMO_SCENARIOS["low"]
         st.success("🟢 Low Risk scenario loaded!")
@@ -334,25 +225,13 @@ with st.sidebar:
         st.session_state["demo"] = DEMO_SCENARIOS["high"]
         st.error("🔴 High Risk scenario loaded!")
 
-    # Load demo values if set
     demo = st.session_state.get("demo", {})
 
     st.markdown("---")
     st.markdown("### ⚙️ Settings")
 
-    # use_mock_research = st.checkbox(
-    #     "Use Mock Research Data",
-    #     value=True,
-    #     help="Use when internet is unavailable"
-    # )
-    # mock_risk_level = st.select_slider(
-    #     "Mock Risk Level",
-    #     options=["low", "medium", "high"],
-    #     value="medium"
-    # ) if use_mock_research else "medium"
     use_mock_research = st.checkbox(
-        "Use Mock Research Data",
-        value=True,
+        "Use Mock Research Data", value=True,
         help="Use when internet is unavailable"
     )
     if use_mock_research:
@@ -367,7 +246,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📊 About")
     st.markdown("""
-    ** IntelliCredit v1.0 **
+    **IntelliCredit v1.2**
     - 🤖 LLM: Groq LLaMA 3.3 70B
     - 📊 ML: XGBoost + SHAP
     - 📄 Parser: Docling
@@ -375,7 +254,7 @@ with st.sidebar:
     """)
 
 
-#  ─ MAIN CONTENT
+# ─── TABS ────────────────────────────────────────────────────────────────────
 
 tab1, tab2, tab3 = st.tabs([
     "📁 Upload Documents",
@@ -383,93 +262,71 @@ tab1, tab2, tab3 = st.tabs([
     "📊 Results"
 ])
 
-#   TAB 1: Document Upload                          ─
+# ── TAB 1: Document Upload ────────────────────────────────────────────────────
 
 with tab1:
     st.markdown("### Upload Financial Documents")
     st.markdown(
-        "Upload any combination of GST returns, "
-        "bank statements, and ITR documents."
-    )
+        "Upload any combination of GST returns, bank statements, and ITR documents.")
 
     col1, col2 = st.columns(2)
-
     with col1:
         gst_file = st.file_uploader(
             "📋 GST Return (GSTR-3B / GSTR-2A)",
-            type=["pdf", "xlsx", "xls"],
-            key="gst"
+            type=["pdf", "xlsx", "xls"], key="gst"
         )
         itr_file = st.file_uploader(
             "📝 Income Tax Return (ITR)",
-            type=["pdf", "xlsx"],
-            key="itr"
+            type=["pdf", "xlsx"], key="itr"
         )
-
     with col2:
         bank_file = st.file_uploader(
             "🏦 Bank Statement",
-            type=["pdf", "xlsx"],
-            key="bank"
+            type=["pdf", "xlsx"], key="bank"
         )
         other_file = st.file_uploader(
             "📎 Other Documents (Annual Report, etc.)",
-            type=["pdf", "docx", "xlsx"],
-            key="other"
+            type=["pdf", "docx", "xlsx"], key="other"
         )
 
-    # GST Reconciliation section
     st.markdown("---")
     st.markdown("### 🔍 GST Reconciliation (GSTR-2A vs 3B)")
     st.markdown(
-        "Upload both GSTR-2A and GSTR-3B to detect "
-        "ITC manipulation and circular trading."
-    )
+        "Upload both GSTR-2A and GSTR-3B to detect ITC manipulation and circular trading.")
 
     col3, col4 = st.columns(2)
     with col3:
         gstr_2a_file = st.file_uploader(
             "GSTR-2A (Auto-populated from suppliers)",
-            type=["pdf", "xlsx"],
-            key="gstr2a"
+            type=["pdf", "xlsx"], key="gstr2a"
         )
     with col4:
         gstr_3b_file = st.file_uploader(
             "GSTR-3B (Self-declared)",
-            type=["pdf", "xlsx"],
-            key="gstr3b"
+            type=["pdf", "xlsx"], key="gstr3b"
         )
 
-    # Show upload status
     uploaded = []
-    if gst_file:
-        uploaded.append(f"✅ GST Return: {gst_file.name}")
-    if bank_file:
-        uploaded.append(f"✅ Bank Statement: {bank_file.name}")
-    if itr_file:
-        uploaded.append(f"✅ ITR: {itr_file.name}")
-    if other_file:
-        uploaded.append(f"✅ Other: {other_file.name}")
-    if gstr_2a_file:
-        uploaded.append(f"✅ GSTR-2A: {gstr_2a_file.name}")
-    if gstr_3b_file:
-        uploaded.append(f"✅ GSTR-3B: {gstr_3b_file.name}")
+    for f, label in [
+        (gst_file, "GST Return"), (bank_file, "Bank Statement"),
+        (itr_file, "ITR"), (other_file, "Other"),
+        (gstr_2a_file, "GSTR-2A"), (gstr_3b_file, "GSTR-3B")
+    ]:
+        if f:
+            uploaded.append(f"✅ {label}: {f.name}")
 
     if uploaded:
         st.success("\n".join(uploaded))
     else:
         st.info(
-            "No documents uploaded yet. "
-            "You can still run analysis with manual inputs below."
-        )
+            "No documents uploaded yet. You can still run analysis with manual inputs.")
 
-#   TAB 2: Officer Inputs
+# ── TAB 2: Officer Inputs ─────────────────────────────────────────────────────
+
 with tab2:
     st.markdown("### 👤 Primary Due Diligence Inputs")
     st.markdown(
-        "These inputs from the credit officer adjust "
-        "the AI risk score (max ±0.25 delta)."
-    )
+        "These inputs from the credit officer adjust the AI risk score (max ±0.25 delta).")
 
     col1, col2 = st.columns(2)
 
@@ -488,39 +345,44 @@ with tab2:
         )
 
     with col2:
-        de_val = float(demo.get("de_ratio", 1.5))
+        # BUG FIX (auto-fill): Read derived values from session_state.
+        # These are populated after the first successful document parse run.
+        # The 🔒 label signals to the officer that the value came from a document.
+        _derived = st.session_state.get("derived_financials", {})
+        _auto_de = _derived.get("debt_equity_ratio")
+        _auto_nw = _derived.get("net_worth_inr")
+
+        de_val = float(demo.get("de_ratio", _auto_de or 1.5))
+        _de_label = "📊 Debt / Equity Ratio" + \
+            (" 🔒 (auto-filled)" if _auto_de and not demo else "")
         debt_equity = st.slider(
-            "📊 Debt / Equity Ratio",
-            min_value=0.0,
-            max_value=5.0,
-            value=round(de_val, 1),
-            step=0.1
+            _de_label, min_value=0.0, max_value=5.0,
+            value=round(de_val, 1), step=0.1
         )
+
         collateral_pct = st.slider(
             "🏠 Collateral Coverage (%)",
-            min_value=0,
-            max_value=200,
-            value=int(demo.get("collateral", 75)),
-            step=5
+            min_value=0, max_value=200,
+            value=int(demo.get("collateral", 75)), step=5
         )
+
+        _nw_val = int(demo.get("net_worth", _auto_nw or 5000000))
+        _nw_label = "💰 Net Worth (Rs.)" + \
+            (" 🔒 (auto-filled)" if _auto_nw and not demo else "")
         net_worth = st.number_input(
-            "💰 Net Worth (Rs.)",
-            min_value=0,
-            value=int(demo.get("net_worth", 5000000)),
-            step=100000,
-            format="%d"
+            _nw_label, min_value=0,
+            value=_nw_val, step=100000, format="%d"
         )
+
         promoter_score = st.slider(
             "⭐ Promoter Integrity Score",
-            min_value=1,
-            max_value=10,
+            min_value=1, max_value=10,
             value=int(demo.get("promoter_score", 7)),
             help="1=Very Poor, 10=Excellent"
         )
         sector_risk = st.slider(
             "🏭 Sector Risk Score",
-            min_value=1,
-            max_value=10,
+            min_value=1, max_value=10,
             value=int(demo.get("sector_risk", 5)),
             help="1=Very Low Risk, 10=Very High Risk"
         )
@@ -528,30 +390,21 @@ with tab2:
     st.markdown("---")
     st.markdown("### 📋 Qualitative Score Preview")
     if site_visit_notes:
-        from config import (
-            SITE_VISIT_RISK_KEYWORDS,
-            SITE_VISIT_POSITIVE_KEYWORDS
-        )
+        from config import SITE_VISIT_RISK_KEYWORDS, SITE_VISIT_POSITIVE_KEYWORDS
         notes_lower = site_visit_notes.lower()
         risk_hits = sum(
-            1 for kw in SITE_VISIT_RISK_KEYWORDS
-            if kw in notes_lower
-        )
+            1 for kw in SITE_VISIT_RISK_KEYWORDS if kw in notes_lower)
         pos_hits = sum(
-            1 for kw in SITE_VISIT_POSITIVE_KEYWORDS
-            if kw in notes_lower
-        )
+            1 for kw in SITE_VISIT_POSITIVE_KEYWORDS if kw in notes_lower)
         if pos_hits > risk_hits:
             st.success(
-                f"✅ Positive signals detected "
-                f"({pos_hits} positive vs {risk_hits} risk keywords). "
-                f"Risk score will decrease."
+                f"✅ Positive signals detected ({pos_hits} positive vs {risk_hits} risk keywords). "
+                "Risk score will decrease."
             )
         elif risk_hits > pos_hits:
             st.warning(
-                f"⚠️ Risk signals detected "
-                f"({risk_hits} risk vs {pos_hits} positive keywords). "
-                f"Risk score will increase."
+                f"⚠️ Risk signals detected ({risk_hits} risk vs {pos_hits} positive keywords). "
+                "Risk score will increase."
             )
         else:
             st.info("ℹ️ Neutral site visit notes. No score adjustment.")
@@ -559,37 +412,31 @@ with tab2:
         st.info("Enter site visit notes above to see score preview.")
 
 
-#   RUN ANALYSIS BUTTON
+# ─── RUN BUTTON ──────────────────────────────────────────────────────────────
 
 st.markdown("---")
-
 if not company_name:
     st.warning("⚠️ Please enter a Company Name in the sidebar to proceed.")
     run_button = st.button("🔍 Run AI Credit Analysis", disabled=True)
 else:
     run_button = st.button("🔍 Run AI Credit Analysis")
 
-#   TAB 3: Results                              ─
+
+# ── TAB 3: Results ────────────────────────────────────────────────────────────
 
 with tab3:
     if "analysis_result" not in st.session_state:
         st.info(
-            "👈 Fill in company details, upload documents, "
-            "add officer inputs, then click "
-            "**Run AI Credit Analysis**"
+            "👈 Fill in company details, upload documents, add officer inputs, "
+            "then click **Run AI Credit Analysis**"
         )
     else:
         result = st.session_state["analysis_result"]
         pred = result.risk_prediction
 
         if pred:
-            #   Decision Banner                      ─
-            decision_str = str(pred.decision).replace(
-                "DecisionType.", ""
-            )
-            category_str = str(pred.risk_category).replace(
-                "RiskCategory.", ""
-            )
+            decision_str = str(pred.decision).replace("DecisionType.", "")
+            category_str = str(pred.risk_category).replace("RiskCategory.", "")
 
             if "APPROVE" in decision_str.upper():
                 css_class = "decision-approve"
@@ -602,40 +449,49 @@ with tab3:
                 icon = "⚠️"
 
             st.markdown(
-                f'<div class="{css_class}">'
-                f'{icon} AI DECISION: {decision_str}'
-                f'</div>',
+                f'<div class="{css_class}">{icon} AI DECISION: {decision_str}</div>',
                 unsafe_allow_html=True
             )
             st.markdown("")
 
-            #   Key Metrics                        ─
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric(
-                    "Risk Score",
-                    f"{pred.risk_score:.3f}",
-                    help="0=No Risk, 1=Maximum Risk"
-                )
+                st.metric("Risk Score", f"{pred.risk_score:.3f}",
+                          help="0=No Risk, 1=Maximum Risk")
             with col2:
-                st.metric(
-                    "Risk Category",
-                    category_str
-                )
+                st.metric("Risk Category", category_str)
             with col3:
-                st.metric(
-                    "Loan Limit",
-                    f"Rs.{pred.loan_limit_inr/100000:.1f}L"
-                )
+                st.metric("Loan Limit",
+                          f"Rs.{pred.loan_limit_inr/100000:.1f}L")
             with col4:
-                st.metric(
-                    "Interest Rate",
-                    f"{pred.interest_rate}% p.a."
-                )
+                st.metric("Interest Rate", f"{pred.interest_rate}% p.a.")
+
+            # Show derived financials if available
+            if result.derived_financials:
+                d = result.derived_financials
+                st.markdown("---")
+                st.markdown("#### 📐 Auto-Derived Financial Ratios")
+                dcol1, dcol2, dcol3, dcol4 = st.columns(4)
+                with dcol1:
+                    if d.debt_equity_ratio is not None:
+                        st.metric("D/E Ratio", f"{d.debt_equity_ratio:.2f}x")
+                with dcol2:
+                    if d.dscr is not None:
+                        st.metric("DSCR", f"{d.dscr:.2f}x")
+                with dcol3:
+                    if d.net_profit_margin is not None:
+                        st.metric("Net Profit Margin",
+                                  f"{d.net_profit_margin:.1f}%")
+                with dcol4:
+                    if d.data_completeness_pct is not None:
+                        st.metric("Data Completeness",
+                                  f"{d.data_completeness_pct:.0f}%")
+                if d.derivation_notes:
+                    for note in d.derivation_notes:
+                        st.caption(f"ℹ️ {note}")
 
             st.markdown("---")
 
-            #   Charts Row
             col_left, col_right = st.columns(2)
 
             with col_left:
@@ -643,16 +499,11 @@ with tab3:
                 if result.five_cs:
                     import plotly.graph_objects as go
                     cs = result.five_cs
-                    categories = [
-                        "Character", "Capacity",
-                        "Capital", "Collateral", "Conditions"
-                    ]
+                    categories = ["Character", "Capacity",
+                                  "Capital", "Collateral", "Conditions"]
                     scores = [
-                        cs.character.score,
-                        cs.capacity.score,
-                        cs.capital.score,
-                        cs.collateral.score,
-                        cs.conditions.score
+                        cs.character.score, cs.capacity.score, cs.capital.score,
+                        cs.collateral.score, cs.conditions.score
                     ]
                     fig = go.Figure()
                     fig.add_trace(go.Scatterpolar(
@@ -664,21 +515,14 @@ with tab3:
                         name="Five Cs"
                     ))
                     fig.update_layout(
-                        polar=dict(
-                            radialaxis=dict(
-                                visible=True,
-                                range=[0, 10]
-                            )
-                        ),
-                        showlegend=False,
-                        height=350,
+                        polar=dict(radialaxis=dict(
+                            visible=True, range=[0, 10])),
+                        showlegend=False, height=350,
                         margin=dict(l=40, r=40, t=40, b=40)
                     )
                     st.plotly_chart(fig, use_container_width=True)
                     st.markdown(
-                        f"**Overall Five Cs Score: "
-                        f"{result.five_cs.overall_score}/10**"
-                    )
+                        f"**Overall Five Cs Score: {result.five_cs.overall_score}/10**")
 
             with col_right:
                 st.markdown("#### 🔍 SHAP Risk Drivers")
@@ -686,22 +530,14 @@ with tab3:
                     import plotly.graph_objects as go
                     factors = pred.top_shap_factors
                     names = [f.display_name for f in factors]
-                    import plotly.graph_objects as go
-                    factors = pred.top_shap_factors
-                    names = [f.display_name for f in factors]
                     values = [
-                        f.shap_value if "increases" in f.direction
-                        else -f.shap_value
+                        f.shap_value if "increases" in f.direction else -f.shap_value
                         for f in factors
                     ]
-                    colors_list = [
-                        "#c62828" if v > 0 else "#2e7d32"
-                        for v in values
-                    ]
+                    colors_list = ["#c62828" if v >
+                                   0 else "#2e7d32" for v in values]
                     fig2 = go.Figure(go.Bar(
-                        x=values,
-                        y=names,
-                        orientation="h",
+                        x=values, y=names, orientation="h",
                         marker_color=colors_list,
                     ))
                     fig2.update_layout(
@@ -711,92 +547,52 @@ with tab3:
                         xaxis=dict(zeroline=True, zerolinewidth=2)
                     )
                     st.plotly_chart(fig2, use_container_width=True)
-                    colors_list = [
-                        "#c62828" if v > 0 else "#2e7d32"
-                        for v in values
-                    ]
-                    # fig2 = go.Figure(go.Bar(
-                    #     x=values,
-                    #     y=names,
-                    #     orientation="h",
-                    #     marker_color=colors_list,
-                    #     text=[
-                    #         f.direction for f in factors
-                    #     ],
-                    #     textposition="outside"
-                    # ))
-                    # fig2.update_layout(
-                    #     xaxis_title="Risk Impact",
-                    #     height=350,
-                    #     margin=dict(l=10, r=10, t=40, b=40),
-                    #     xaxis=dict(zeroline=True)
-                    # )
-                    # st.plotly_chart(fig2, use_container_width=True)
 
             st.markdown("---")
 
-            #   GST Reconciliation
             if result.gst_reconciliation:
                 st.markdown("#### 🔍 GST Reconciliation")
                 rec = result.gst_reconciliation
                 if rec.risk_flag:
                     st.markdown(
-                        f'<div class="flag-box">'
-                        f'🚨 GST Risk Flag: {rec.total_mismatches} '
-                        f'mismatch(es) detected. '
-                        f'Max variance: {rec.variance_pct}%'
-                        f'</div>',
+                        f'<div class="flag-box">🚨 GST Risk Flag: {rec.total_mismatches} '
+                        f'mismatch(es) detected. Max variance: {rec.variance_pct}%</div>',
                         unsafe_allow_html=True
                     )
                 else:
                     st.success(
-                        f"✅ GST Reconciliation Passed. "
-                        f"Variance: {rec.variance_pct}%"
-                    )
+                        f"✅ GST Reconciliation Passed. Variance: {rec.variance_pct}%")
                 if rec.circular_trading_flag:
                     st.markdown(
-                        '<div class="flag-box">'
-                        '🚨 CIRCULAR TRADING DETECTED'
-                        '</div>',
+                        '<div class="flag-box">🚨 CIRCULAR TRADING DETECTED</div>',
                         unsafe_allow_html=True
                     )
 
-            #   Five Cs Detail
             if result.five_cs:
                 st.markdown("#### 📋 Five Cs Detail")
                 cs = result.five_cs
                 for label, obj in [
-                    ("Character", cs.character),
-                    ("Capacity", cs.capacity),
-                    ("Capital", cs.capital),
-                    ("Collateral", cs.collateral),
+                    ("Character", cs.character), ("Capacity", cs.capacity),
+                    ("Capital", cs.capital), ("Collateral", cs.collateral),
                     ("Conditions", cs.conditions),
                 ]:
-                    with st.expander(
-                        f"{label}: {obj.score}/10 — {obj.summary}"
-                    ):
+                    with st.expander(f"{label}: {obj.score}/10 — {obj.summary}"):
                         for f in obj.factors:
                             st.markdown(f"• {f}")
 
-            #   Early Warnings
             if pred.early_warning_signals:
                 st.markdown("#### ⚠️ Early Warning Signals")
                 for w in pred.early_warning_signals:
-                    st.markdown(
-                        f'<div class="warning-box">⚠️ {w}</div>',
-                        unsafe_allow_html=True
-                    )
+                    st.markdown(f'<div class="warning-box">⚠️ {w}</div>',
+                                unsafe_allow_html=True)
 
-            #   Reasoning Chain                      ─
             st.markdown("---")
             with st.expander("🤖 View Full AI Reasoning Chain"):
                 st.text(result.reasoning_chain)
 
-            #   Research
             if result.research:
                 with st.expander(
-                    f"📰 External Research "
-                    f"(News Risk: {result.research.news_risk_score}/10)"
+                    f"📰 External Research (News Risk: {result.research.news_risk_score}/10)"
                 ):
                     r = result.research
                     st.markdown(r.research_summary)
@@ -804,22 +600,18 @@ with tab3:
                         st.markdown("**Negative News:**")
                         for item in r.negative_news[:5]:
                             st.markdown(
-                                f'<div class="news-negative">'
-                                f'🔴 {item.title}<br>'
+                                f'<div class="news-negative">🔴 {item.title}<br>'
                                 f'<span style="opacity:0.6;font-size:0.75rem">'
-                                f'{item.date} — {item.source}</span>'
-                                f'</div>',
+                                f'{item.date} — {item.source}</span></div>',
                                 unsafe_allow_html=True
                             )
                     if r.positive_news:
                         st.markdown("**Positive News:**")
                         for item in r.positive_news[:3]:
                             st.markdown(
-                                f'<div class="news-positive">'
-                                f'🟢 {item.title}<br>'
+                                f'<div class="news-positive">🟢 {item.title}<br>'
                                 f'<span style="opacity:0.6;font-size:0.75rem">'
-                                f'{item.date} — {item.source}</span>'
-                                f'</div>',
+                                f'{item.date} — {item.source}</span></div>',
                                 unsafe_allow_html=True
                             )
                     if r.litigation_details:
@@ -827,88 +619,295 @@ with tab3:
                         for case in r.litigation_details:
                             st.markdown(f"⚖️ {case}")
 
-            #   Download Reports
             st.markdown("---")
-            st.markdown("#### 📥 Download Reports")
-            col_dl1, col_dl2 = st.columns(2)
+            st.markdown("#### 📥 Reports")
+            col_dl1, col_dl2, col_dl3 = st.columns([2, 2, 1])
 
             if "pdf_path" in st.session_state:
                 with col_dl1:
-                    with open(
-                        st.session_state["pdf_path"], "rb"
-                    ) as f:
+                    with open(st.session_state["pdf_path"], "rb") as f:
                         st.download_button(
                             "📄 Download PDF CAM",
                             data=f.read(),
-                            file_name=Path(
-                                st.session_state["pdf_path"]
-                            ).name,
-                            mime="application/pdf"
+                            file_name=Path(st.session_state["pdf_path"]).name,
+                            mime="application/pdf",
+                            use_container_width=True,
                         )
+                with col_dl3:
+                    if st.button("👁 View PDF", use_container_width=True):
+                        st.session_state["show_pdf_modal"] = True
+
             if "docx_path" in st.session_state:
                 with col_dl2:
-                    with open(
-                        st.session_state["docx_path"], "rb"
-                    ) as f:
+                    with open(st.session_state["docx_path"], "rb") as f:
                         st.download_button(
                             "📝 Download DOCX CAM",
                             data=f.read(),
-                            file_name=Path(
-                                st.session_state["docx_path"]
-                            ).name,
+                            file_name=Path(st.session_state["docx_path"]).name,
                             mime=(
                                 "application/vnd.openxmlformats-"
                                 "officedocument.wordprocessingml.document"
-                            )
+                            ),
+                            use_container_width=True,
                         )
 
-#  ─ RUN ANALYSIS PIPELINE                          ─
+            # ── inline PDF viewer (modal overlay) ────────────────────────────
+            if st.session_state.get("show_pdf_modal") and "pdf_path" in st.session_state:
+                import base64
+                import streamlit.components.v1 as components
+
+                with open(st.session_state["pdf_path"], "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("utf-8")
+
+                pdf_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ background:#1a1a2e; font-family: Arial, sans-serif; }}
+
+  .modal-backdrop {{
+    position: fixed;
+    inset: 0;
+    background: rgba(10,12,30,0.92);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: fadeIn 0.18s ease;
+  }}
+  @keyframes fadeIn {{ from {{ opacity:0 }} to {{ opacity:1 }} }}
+
+  .modal-box {{
+    background: #0d1f5c;
+    border: 1.5px solid #c9970a;
+    border-radius: 10px;
+    width: 92vw;
+    max-width: 960px;
+    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 48px rgba(0,0,0,0.7);
+    animation: slideUp 0.2s ease;
+  }}
+  @keyframes slideUp {{ from {{ transform:translateY(24px); opacity:0 }} to {{ transform:translateY(0); opacity:1 }} }}
+
+  .modal-header {{
+    background: #0d1f5c;
+    border-bottom: 1.5px solid #c9970a;
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }}
+  .modal-title {{
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: bold;
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }}
+  .modal-title .dot {{
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #c9970a;
+    display: inline-block;
+  }}
+  .btn-close {{
+    background: #b71c1c;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+    transition: background 0.15s;
+  }}
+  .btn-close:hover {{ background: #d32f2f; }}
+
+  .modal-toolbar {{
+    background: #111a3e;
+    border-bottom: 1px solid #1e2d6e;
+    padding: 7px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }}
+  .toolbar-label {{
+    color: #8895c0;
+    font-size: 11.5px;
+    letter-spacing: 0.03em;
+  }}
+  .toolbar-badge {{
+    background: #1a3080;
+    color: #b8c8f0;
+    border-radius: 4px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+  }}
+
+  .pdf-frame {{
+    flex: 1;
+    border: none;
+    width: 100%;
+    background: #f5f5f5;
+  }}
+</style>
+</head>
+<body>
+<div class="modal-backdrop" id="modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span class="dot"></span>
+        CREDIT APPRAISAL MEMORANDUM — IntelliCredit
+      </div>
+      <button class="btn-close" onclick="closeModal()">✕ Close</button>
+    </div>
+    <div class="modal-toolbar">
+      <span class="toolbar-label">Document:</span>
+      <span class="toolbar-badge">📄 CAM_Report.pdf</span>
+      <span class="toolbar-label" style="margin-left:auto;">Scroll or use browser PDF controls to zoom</span>
+    </div>
+    <iframe
+      class="pdf-frame"
+      src="data:application/pdf;base64,{b64}"
+    ></iframe>
+  </div>
+</div>
+
+<script>
+  function closeModal() {{
+    document.getElementById('modal').style.display = 'none';
+    window.parent.postMessage({{type: 'streamlit:setComponentValue', value: false}}, '*');
+  }}
+  // Close on backdrop click
+  document.getElementById('modal').addEventListener('click', function(e) {{
+    if (e.target === this) closeModal();
+  }});
+  // Close on Escape
+  document.addEventListener('keydown', function(e) {{
+    if (e.key === 'Escape') closeModal();
+  }});
+</script>
+</body>
+</html>
+"""
+                components.html(pdf_html, height=700, scrolling=False)
+
+                col_c1, col_c2, col_c3 = st.columns([3, 2, 3])
+                with col_c2:
+                    if st.button("✕  Close PDF Viewer", use_container_width=True):
+                        st.session_state["show_pdf_modal"] = False
+                        st.rerun()
+
+
+# ─── RUN ANALYSIS PIPELINE ───────────────────────────────────────────────────
 
 if run_button and company_name:
+
     with st.spinner("🔄 Loading AI engines..."):
         engines = load_engines()
 
-    from src.schemas import (
-        CreditAppraisalResult, QualitativeInputs
-    )
+    from src.schemas import CreditAppraisalResult, QualitativeInputs
 
     result = CreditAppraisalResult(company_name=company_name)
 
-    #   Parse & Extract Documents                     ─
+    # ── Parse & Extract Documents ────────────────────────────────────────────
     with st.spinner("📄 Parsing documents..."):
         parser = engines["parser"]
         extractor = engines["extractor"]
+        rag = engines["agent"].rag  # reuse the same RAG instance as the agent
+
+        # Track temp files — delete AFTER all extraction is done so the
+        # openpyxl fallback in extract_itr() can still open the source file.
+        _tmp_files = []
 
         def save_and_parse(uploaded_file):
             if not uploaded_file:
                 return None
             suffix = Path(uploaded_file.name).suffix
-            with tempfile.NamedTemporaryFile(
-                delete=False, suffix=suffix
-            ) as tmp:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 tmp.write(uploaded_file.read())
                 tmp_path = tmp.name
+            _tmp_files.append(tmp_path)   # schedule for cleanup later
             parsed = parser.parse(tmp_path)
-            os.unlink(tmp_path)
+            # NOTE: do NOT unlink here — extractor needs the file for xlsx fallback
             return parsed
 
-        # Parse uploaded files
         if gst_file:
             parsed_gst = save_and_parse(gst_file)
             if parsed_gst and not parsed_gst.error:
                 result.gst_data = extractor.extract_gst(parsed_gst)
+                # BUG FIX 2: ingest into RAG so agent has document context
+                rag.ingest(parsed_gst, company_name=company_name)
 
         if bank_file:
             parsed_bank = save_and_parse(bank_file)
             if parsed_bank and not parsed_bank.error:
                 result.bank_data = extractor.extract_bank(parsed_bank)
+                # BUG FIX 2: ingest bank statement into RAG
+                rag.ingest(parsed_bank, company_name=company_name)
 
         if itr_file:
             parsed_itr = save_and_parse(itr_file)
             if parsed_itr and not parsed_itr.error:
                 result.itr_data = extractor.extract_itr(parsed_itr)
+                # BUG FIX 2: ingest ITR into RAG
+                rag.ingest(parsed_itr, company_name=company_name)
+                # Debug: show what was extracted
+                itr = result.itr_data
+                print(f"[ITR DEBUG] net_worth={itr.net_worth}, revenue={itr.revenue}, "
+                      f"net_income={itr.net_income}, LTD={itr.long_term_debt}, "
+                      f"STD={itr.short_term_debt}, EBITDA={itr.ebitda}")
+                if itr.net_worth == 0:
+                    st.warning(f"⚠️ ITR parsed but net worth is zero — "
+                               f"check that the Balance Sheet sheet is present. "
+                               f"Raw text preview: {parsed_itr.raw_text[:200]!r}")
+            else:
+                err = getattr(parsed_itr, 'error',
+                              'unknown') if parsed_itr else 'parsed_itr is None'
+                print(f"[ITR DEBUG] parse failed: {err}")
+                st.warning(f"⚠️ ITR file could not be parsed: {err}")
 
-    #   GST Reconciliation
+        if other_file:
+            parsed_other = save_and_parse(other_file)
+            if parsed_other and not parsed_other.error:
+                # BUG FIX 2: ingest supplementary docs too
+                rag.ingest(parsed_other, company_name=company_name)
+
+        # Clean up all temp files now that extraction is complete
+        for _f in _tmp_files:
+            try:
+                os.unlink(_f)
+            except OSError:
+                pass
+
+        # Derive financial ratios from parsed documents (auto-fill pipeline)
+        derived = engines["risk_engine"].derive_from_documents(result)
+        result.derived_financials = derived
+
+        # Cache derived values for Tab 2 pre-fill (🔒 auto labels)
+        st.session_state["derived_financials"] = {
+            "debt_equity_ratio": derived.debt_equity_ratio,
+            "net_worth_inr": derived.net_worth_inr,
+        }
+        if derived.derivation_notes:
+            for note in derived.derivation_notes:
+                st.info(f"📊 {note}")
+
+    # ── GST Reconciliation ───────────────────────────────────────────────────
     with st.spinner("🔍 Running GST reconciliation..."):
         if gstr_2a_file and gstr_3b_file:
             parsed_2a = save_and_parse(gstr_2a_file)
@@ -916,21 +915,21 @@ if run_button and company_name:
             if parsed_2a and parsed_3b:
                 gst_2a = extractor.extract_gst(parsed_2a)
                 gst_3b = extractor.extract_gst(parsed_3b)
-                result.gst_reconciliation = (
-                    engines["reconciler"].reconcile(gst_2a, gst_3b)
-                )
+                result.gst_reconciliation = engines["reconciler"].reconcile(
+                    gst_2a, gst_3b)
+                # Also ingest reconciliation docs into RAG
+                if not parsed_2a.error:
+                    rag.ingest(parsed_2a, company_name=company_name)
+                if not parsed_3b.error:
+                    rag.ingest(parsed_3b, company_name=company_name)
         elif result.gst_data:
-            # Single GST file — create dummy reconciliation
             from src.schemas import GSTReconciliationResult
             result.gst_reconciliation = GSTReconciliationResult(
-                total_mismatches=0,
-                risk_flag=False,
-                variance_pct=0.0,
-                summary="Single GST file uploaded. Upload both "
-                        "GSTR-2A and 3B for full reconciliation."
+                total_mismatches=0, risk_flag=False, variance_pct=0.0,
+                summary="Single GST file uploaded. Upload both GSTR-2A and 3B for full reconciliation."
             )
 
-    #   Research
+    # ── Research ─────────────────────────────────────────────────────────────
     with st.spinner("🔎 Researching company..."):
         if use_mock_research:
             result.research = engines["researcher"].research_with_mock(
@@ -941,8 +940,10 @@ if run_button and company_name:
                 company_name, promoter_name
             )
 
-    #   Qualitative Inputs
-    result.qualitative_inputs = QualitativeInputs(
+    # ── Qualitative Inputs ────────────────────────────────────────────────────
+    # BUG FIX (auto-fill): merge auto-derived values with officer form inputs.
+    # Officer-entered values always win; derived values are the fallback base layer.
+    officer_inputs = QualitativeInputs(
         site_visit_notes=site_visit_notes,
         management_interview_notes=management_notes,
         debt_equity_ratio=debt_equity,
@@ -951,27 +952,34 @@ if run_button and company_name:
         sector_risk_score=sector_risk,
         promoter_score=promoter_score
     )
+    result.qualitative_inputs = engines["risk_engine"].build_qualitative_inputs(
+        result.derived_financials, officer_inputs
+    )
 
-    #   Five Cs                              ─
+    # ── Five Cs ───────────────────────────────────────────────────────────────
     with st.spinner("📊 Running Five Cs analysis..."):
         result.five_cs = engines["five_cs"].analyze(result)
 
-    #   XGBoost Risk Score
+    # ── BUG FIX 1 (critical): XGBoost + SHAP scoring FIRST ──────────────────
+    # Previously agent.analyze() was called after risk_engine.score() and
+    # silently overwrote the XGBoost prediction with a simple rule-based score.
+    # Correct order: risk_engine produces the score → agent adds narrative only.
     with st.spinner("🤖 Scoring with XGBoost + SHAP..."):
-        result.risk_prediction = engines["risk_engine"].score(result)
+        result.risk_prediction = engines["risk_engine"].score(
+            result, requested_amount_inr=float(loan_amount_requested)
+        )
 
-    #   LLM Reasoning                           ─
+    # ── LLM Reasoning (adds narrative, does NOT change risk_score) ────────────
     with st.spinner("🧠 Running AI reasoning (Groq LLaMA)..."):
         result = engines["agent"].analyze(result)
 
-    #   Generate Reports
+    # ── Generate Reports ──────────────────────────────────────────────────────
     with st.spinner("📄 Generating PDF and DOCX reports..."):
         paths = engines["cam"].generate_both(result)
         st.session_state["pdf_path"] = paths["pdf"]
         st.session_state["docx_path"] = paths["docx"]
 
-    # Save result to session
     st.session_state["analysis_result"] = result
-
-    st.success("✅ Analysis complete! Switch to the Results tab.")
+    st.session_state["show_pdf_modal"] = True   # trigger inline PDF viewer
+    st.success("✅ Analysis complete!")
     st.balloons()

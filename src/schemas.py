@@ -83,14 +83,18 @@ class GSTReconciliationResult(BaseModel):
 class BankStatementData(BaseModel):
     """Extracted bank statement data"""
     account_number: Optional[str] = None
+    account_holder: Optional[str] = None
     bank_name: Optional[str] = None
     period: Optional[str] = None
+    period_start: Optional[str] = None
+    period_end: Optional[str] = None
     opening_balance: float = 0.0
     closing_balance: float = 0.0
     total_credits: float = 0.0
     total_debits: float = 0.0
     monthly_balances: List[float] = []
     monthly_credits: List[float] = []
+    monthly_debits: List[float] = []
     emi_bounce_count: int = 0
     large_unusual_transactions: List[Dict[str, Any]] = []
     average_monthly_balance: float = 0.0
@@ -110,6 +114,53 @@ class ITRData(BaseModel):
     net_worth: float = 0.0
     total_assets: float = 0.0
     total_liabilities: float = 0.0
+    # Added: broken-out debt fields needed for accurate D/E ratio calculation.
+    # total_liabilities includes trade payables and other non-debt items, so
+    # using it directly overstates leverage. These capture borrowings only.
+    long_term_debt: float = 0.0     # Term loans, debentures
+    short_term_debt: float = 0.0    # CC limits, working capital loans
+    revenue: float = 0.0            # Top-line revenue for growth rate calc
+    ebitda: float = 0.0             # For DSCR computation
+    interest_expense: float = 0.0   # For DSCR computation
+
+# ─── DERIVED FINANCIALS ──────────────────────────────────────────────────────
+
+
+class DerivedFinancials(BaseModel):
+    """
+    Auto-computed financial ratios derived from uploaded documents.
+    Populated by RiskEngine.derive_from_documents() before the officer
+    fills in QualitativeInputs — pre-fills the UI with document-backed values.
+
+    Fields that cannot be derived (collateral, promoter score, site visit)
+    remain None so the UI knows to require officer input for those only.
+    """
+    # Derived from ITR
+    debt_equity_ratio: Optional[float] = None      # (LTD + STD) / net_worth
+    net_worth_inr: Optional[float] = None          # Direct from ITR
+    total_debt_inr: Optional[float] = None         # LTD + STD
+    # current_assets / current_liabilities
+    current_ratio: Optional[float] = None
+    # EBITDA / (interest + principal)
+    dscr: Optional[float] = None
+    net_profit_margin: Optional[float] = None      # net_income / revenue
+
+    # Derived from Bank Statement
+    avg_monthly_balance_inr: Optional[float] = None
+    monthly_credit_avg_inr: Optional[float] = None
+    credit_utilisation_pct: Optional[float] = None  # debits / credits
+
+    # Derived from GST
+    gst_turnover_inr: Optional[float] = None
+    itc_claimed_inr: Optional[float] = None
+    effective_tax_rate_pct: Optional[float] = None  # total_tax / turnover
+
+    # Flags
+    data_completeness_pct: float = 0.0   # % of fields successfully derived
+    # Warnings about missing/assumed values
+    derivation_notes: List[str] = []
+    # Names of fields successfully auto-derived from documents
+    auto_filled_fields: List[str] = []
 
 # ─── RESEARCH DATA ───────────────────────────────────────────────────────────
 
@@ -183,14 +234,26 @@ class RiskPrediction(BaseModel):
 
 
 class QualitativeInputs(BaseModel):
-    """Officer's primary due diligence inputs"""
+    """
+    Officer's due diligence inputs.
+
+    Fields marked AUTO are pre-filled from DerivedFinancials when documents
+    are uploaded — officer can override but doesn't have to type them.
+    Fields marked OFFICER must always be entered manually.
+    """
+    # OFFICER — cannot be derived from any document
     site_visit_notes: str = ""
     management_interview_notes: str = ""
-    debt_equity_ratio: float = 1.5
-    collateral_coverage: float = 0.6
-    net_worth_inr: float = 0.0
-    sector_risk_score: int = 5      # 1-10, officer's assessment
-    promoter_score: int = 5         # 1-10, integrity assessment
+    promoter_score: int = 5             # 1-10, integrity assessment
+    sector_risk_score: int = 5          # 1-10, officer's sector view
+    collateral_coverage: float = 0.6    # depends on what borrower offers
+
+    # AUTO — pre-filled from ITR/Bank, officer can override
+    debt_equity_ratio: float = 1.5      # derived: (LTD+STD) / net_worth
+    net_worth_inr: float = 0.0          # derived: from ITR balance sheet
+
+    # Tracks whether auto-fill was applied (for UI to show lock/edit icon)
+    auto_filled_fields: List[str] = []
 
 
 class QualitativeAdjustment(BaseModel):
@@ -214,6 +277,9 @@ class CreditAppraisalResult(BaseModel):
     bank_data: Optional[BankStatementData] = None
     itr_data: Optional[ITRData] = None
     gst_reconciliation: Optional[GSTReconciliationResult] = None
+
+    # Auto-derived ratios (populated before officer input screen)
+    derived_financials: Optional[DerivedFinancials] = None
 
     # Research
     research: Optional[ResearchFindings] = None

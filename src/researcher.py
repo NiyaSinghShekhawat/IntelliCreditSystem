@@ -25,40 +25,54 @@ class ResearchAgent:
         print(f"Researching: {company_name}")
         findings = ResearchFindings(company_name=company_name)
 
-        # print("  Searching news (GDELT)...")
-        # news_items = self._search_gdelt(company_name)
-        # if promoter_name:
-        #     news_items.extend(self._search_gdelt(promoter_name))
         print("  Searching news (Google News + GDELT)...")
-        # Try Google News first (more reliable)
-        news_items = self._search_google_news(company_name)
 
-        # Search for specific risk categories
+        # BUG FIX 1 + 4: Use exact phrase + India geo-filter as base query.
+        # Wrap company name in quotes so Google News treats it as an exact phrase,
+        # not individual words. Append "India" to bias toward Indian results.
+        # Split boolean OR queries into separate calls (Bug 4 fix) — RSS ignores OR.
+        base_query = f'"{company_name}" India'
+        news_items = self._search_google_news(base_query, company_name)
+
+        # BUG FIX 4: Separate searches instead of boolean OR in one query.
+        # Each call targets a specific risk signal independently.
         risk_queries = [
-            f"{company_name} fraud OR scam OR arrest",
-            f"{company_name} GST violation OR notice OR penalty",
-            f"{company_name} court case OR FIR OR defaulter",
+            f'"{company_name}" fraud',
+            f'"{company_name}" GST notice',
+            f'"{company_name}" GST penalty',
+            f'"{company_name}" court case',
+            f'"{company_name}" FIR',
+            f'"{company_name}" defaulter',
+            f'"{company_name}" arrest',
         ]
         positive_queries = [
-            f"{company_name} new project OR expansion OR contract",
-            f"{company_name} award OR certification OR export",
+            f'"{company_name}" expansion',
+            f'"{company_name}" export contract',
+            f'"{company_name}" award',
         ]
 
         for q in risk_queries:
-            news_items.extend(self._search_google_news(q))
+            news_items.extend(self._search_google_news(q, company_name))
         for q in positive_queries:
-            news_items.extend(self._search_google_news(q))
+            news_items.extend(self._search_google_news(q, company_name))
 
-        # Also try promoter name
+        # Promoter search — search for promoter name alongside company name.
+        # IMPORTANT: relevance filter uses company_name tokens (not promoter tokens)
+        # so results must mention the company, not just the promoter personally.
+        # e.g. "Rajesh Mehta" + "Sunrise Apparels" — rejects Lilavati Hospital articles.
         if promoter_name:
-            news_items.extend(self._search_google_news(promoter_name))
+            promoter_query = f'"{promoter_name}" "{company_name}"'
+            news_items.extend(self._search_google_news(
+                promoter_query, company_name))
 
         # Fallback to GDELT if Google News got nothing
         if not news_items:
             print("  Google News empty, trying GDELT...")
-            news_items = self._search_gdelt(company_name)
+            news_items = self._search_gdelt(company_name, company_name)
             if promoter_name:
-                news_items.extend(self._search_gdelt(promoter_name))
+                # Also require company name in GDELT promoter search
+                news_items.extend(self._search_gdelt(
+                    f'{promoter_name} {company_name}', company_name))
 
         # Deduplicate by title
         seen_titles = set()
@@ -204,8 +218,50 @@ class ResearchAgent:
         findings.research_summary = self._build_summary(findings)
         return findings
 
-    def _search_gdelt(self, query: str) -> List[NewsItem]:
+    def _build_relevance_tokens(self, company_name: str) -> set:
+        """Extract meaningful tokens from company name for relevance filtering."""
+        stopwords = {"pvt", "ltd", "private", "limited", "co", "india",
+                     "the", "and", "of", "for", "in", "a", "an", "inc", "llp"}
+        tokens = set()
+        for token in company_name.lower().split():
+            clean = token.strip(".,()-&")
+            if clean not in stopwords and len(clean) > 2:
+                tokens.add(clean)
+        return tokens
+
+    def _is_relevant_to_company(self, title: str, relevance_tokens: set,
+                                company_name: str = "") -> bool:
+        """
+        Check if a news article title is actually about the company.
+
+        Strategy (in order of preference):
+          1. Full company name substring present → definitely relevant
+          2. ALL meaningful tokens present → likely relevant
+          3. Only SOME tokens present → reject (e.g. "Rajesh" alone matches
+             unrelated articles about other people named Rajesh)
+
+        This prevents false positives like a crime article about "Rajesh Mehta"
+        (Lilavati Hospital) appearing for a search on "Sunrise Apparels" whose
+        promoter happens to also be named Rajesh Mehta.
+        """
+        if not relevance_tokens:
+            return True
+        title_lower = title.lower()
+
+        # Best check: full company name present (case-insensitive substring)
+        if company_name and company_name.lower() in title_lower:
+            return True
+
+        # Strong check: ALL tokens present
+        if len(relevance_tokens) >= 2:
+            return all(t in title_lower for t in relevance_tokens)
+
+        # Single token: just require it to be present
+        return any(t in title_lower for t in relevance_tokens)
+
+    def _search_gdelt(self, query: str, company_name: str = "") -> List[NewsItem]:
         items = []
+        relevance_tokens = self._build_relevance_tokens(company_name or query)
         try:
             params = {
                 "query": f'"{query}" sourcelang:eng',
@@ -223,6 +279,13 @@ class ResearchAgent:
             data = response.json()
             for article in data.get("articles", []):
                 title = article.get("title", "")
+                if not title:
+                    continue
+                # Apply same relevance filter as Google News
+                if not self._is_relevant_to_company(title, relevance_tokens, company_name):
+                    if DEBUG_MODE:
+                        print(f"  GDELT filtered irrelevant: {title[:60]}")
+                    continue
                 title_lower = title.lower()
                 found_keywords = [
                     kw for kw in NEGATIVE_KEYWORDS if kw in title_lower
@@ -242,16 +305,25 @@ class ResearchAgent:
                 print(f"  GDELT error: {e}")
         return items
 
-    def _search_google_news(self, query: str) -> List[NewsItem]:
+    def _search_google_news(self, query: str,
+                            company_name: str = "") -> List[NewsItem]:
         """
         Search Google News RSS for real-time news.
-        Free, no API key, works reliably.
+
+        BUG FIX 1: query must already have the company name in quotes
+                   (caller's responsibility — see research() above).
+        BUG FIX 2: INDIAN_NEWS_DOMAINS is now actually used to filter results.
+        BUG FIX 3: Post-fetch relevance check — article title must contain
+                   a significant word from the company name to be included.
         """
         items = []
         try:
             import urllib.parse
             encoded_query = urllib.parse.quote(query)
-            url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
+            url = (
+                f"https://news.google.com/rss/search"
+                f"?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
+            )
 
             response = self.session.get(url, timeout=10)
 
@@ -264,35 +336,63 @@ class ResearchAgent:
             soup = BeautifulSoup(response.content, "xml")
             articles = soup.find_all("item")[:15]
 
+            relevance_tokens = self._build_relevance_tokens(
+                company_name) if company_name else set()
+
             for article in articles:
-                title = article.find("title")
-                title = title.text if title else ""
-                link = article.find("link")
-                link = link.text if link else ""
-                pub_date = article.find("pubDate")
-                pub_date = pub_date.text[:10] if pub_date else ""
-                source = article.find("source")
-                source = source.text if source else "Google News"
+                title_tag = article.find("title")
+                title = title_tag.text if title_tag else ""
+                link_tag = article.find("link")
+                link = link_tag.text if link_tag else ""
+                pub_date_tag = article.find("pubDate")
+                pub_date = pub_date_tag.text[:10] if pub_date_tag else ""
+                source_tag = article.find("source")
+                source = source_tag.text if source_tag else "Google News"
+
+                if not title:
+                    continue
 
                 title_lower = title.lower()
+                if not self._is_relevant_to_company(title, relevance_tokens, company_name):
+                    if DEBUG_MODE:
+                        print(f"  Filtered irrelevant: {title[:60]}")
+                    continue
+
+                # BUG FIX 2: Domain filter — INDIAN_NEWS_DOMAINS was imported
+                # but never used. Now applied: if the list is populated in config,
+                # only include articles from those domains.
+                # Falls back to accepting all domains if list is empty (safe default).
+                if INDIAN_NEWS_DOMAINS:
+                    source_lower = source.lower()
+                    domain_from_url = self._extract_domain(link)
+                    is_indian_source = any(
+                        domain in source_lower or domain in domain_from_url
+                        for domain in INDIAN_NEWS_DOMAINS
+                    )
+                    if not is_indian_source:
+                        if DEBUG_MODE:
+                            print(
+                                f"  Filtered non-Indian source: {source} | {title[:50]}")
+                        continue
+
                 found_keywords = [
                     kw for kw in NEGATIVE_KEYWORDS
                     if kw in title_lower
                 ]
                 is_negative = len(found_keywords) > 0
 
-                if title:
-                    items.append(NewsItem(
-                        title=title,
-                        url=link,
-                        date=pub_date,
-                        source=source,
-                        is_negative=is_negative,
-                        keywords_found=found_keywords
-                    ))
+                items.append(NewsItem(
+                    title=title,
+                    url=link,
+                    date=pub_date,
+                    source=source,
+                    is_negative=is_negative,
+                    keywords_found=found_keywords
+                ))
 
             if DEBUG_MODE:
-                print(f"  Google News: {len(items)} articles for '{query}'")
+                print(
+                    f"  Google News: {len(items)} relevant articles for '{query}'")
 
         except requests.exceptions.Timeout:
             print("  Google News timeout")
@@ -301,6 +401,14 @@ class ResearchAgent:
                 print(f"  Google News error: {e}")
 
         return items
+
+    def _extract_domain(self, url: str) -> str:
+        """Extract bare domain from a URL for domain filtering."""
+        try:
+            from urllib.parse import urlparse
+            return urlparse(url).netloc.lower().replace("www.", "")
+        except Exception:
+            return ""
 
     def _check_mca(self, company_name: str) -> List[dict]:
         charges = []

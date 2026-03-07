@@ -18,11 +18,17 @@ EXTERNAL RESEARCH:
 OFFICER OBSERVATIONS:
 {qualitative_data}
 
+SYSTEM-COMPUTED CREDIT LIMIT (already set by risk engine — do NOT change this):
+  Recommended Loan Limit: Rs. {loan_limit_lakhs:.2f} Lakhs
+  Interest Rate:          {interest_rate:.2f}% p.a.
+  Risk Score:             {risk_score:.3f} / 1.0
+  Risk Category:          {risk_category}
+
 Analyze this data and respond in EXACTLY this format — do not add anything extra:
 
-DECISION: [Approve / Reject / Conditional Approval]
-LIMIT: Rs.[amount in lakhs]
-RATE: [x.x]% per annum
+DECISION: [Approve / Reject / Conditional Approval — must match the risk category above]
+LIMIT: Rs.{loan_limit_lakhs:.2f} Lakhs  [FIXED — do not change]
+RATE: {interest_rate:.2f}% per annum  [FIXED — do not change]
 
 REASONING CHAIN:
 1. GST Analysis      -> [your finding] -> [impact: increases/decreases risk]
@@ -177,8 +183,14 @@ Mention specific figures. Do not use bullet points.
 # ─── HELPER: Format financial data for prompts ───────────────────────────────
 
 def format_financial_data(gst_data=None, bank_data=None, itr_data=None,
-                          reconciliation=None) -> str:
-    """Format extracted financial data into prompt-ready text"""
+                          reconciliation=None, derived=None) -> str:
+    """
+    Format extracted financial data into prompt-ready text.
+
+    BUG FIX 4: Added `derived` parameter so the LLM sees computed ratios
+    (D/E, DSCR, net profit margin, avg balance) rather than having to infer
+    them from raw balance sheet numbers it was never given.
+    """
     lines = []
 
     if gst_data:
@@ -203,8 +215,21 @@ def format_financial_data(gst_data=None, bank_data=None, itr_data=None,
     if bank_data:
         lines.append("\nBANK STATEMENT DATA:")
         lines.append(f"  Bank: {bank_data.bank_name or 'Not specified'}")
-        lines.append(f"  Total Credits: Rs. {bank_data.total_credits:,.0f}")
-        lines.append(f"  Total Debits: Rs. {bank_data.total_debits:,.0f}")
+        # Show period if available
+        period_str = ""
+        if hasattr(bank_data, 'period_start') and bank_data.period_start:
+            period_str = f"{bank_data.period_start} to {getattr(bank_data, 'period_end', '')}"
+        elif bank_data.period:
+            period_str = bank_data.period
+        if period_str:
+            lines.append(f"  Statement Period: {period_str}")
+        # Compute months in statement for per-month context
+        months = len(
+            bank_data.monthly_credits) if bank_data.monthly_credits else 6
+        lines.append(
+            f"  Total Credits ({months} months): Rs. {bank_data.total_credits:,.0f}  (Monthly avg: Rs. {bank_data.total_credits/months:,.0f})")
+        lines.append(
+            f"  Total Debits  ({months} months): Rs. {bank_data.total_debits:,.0f}  (Monthly avg: Rs. {bank_data.total_debits/months:,.0f})")
         lines.append(
             f"  Avg Monthly Balance: Rs. {bank_data.average_monthly_balance:,.0f}")
         lines.append(f"  EMI Bounces: {bank_data.emi_bounce_count}")
@@ -217,12 +242,51 @@ def format_financial_data(gst_data=None, bank_data=None, itr_data=None,
         lines.append(f"  Gross Income: Rs. {itr_data.gross_income:,.0f}")
         lines.append(f"  Net Income: Rs. {itr_data.net_income:,.0f}")
         lines.append(f"  Net Worth: Rs. {itr_data.net_worth:,.0f}")
+        # Show ITR debt fields if available
+        if hasattr(itr_data, 'long_term_debt') and itr_data.long_term_debt > 0:
+            lines.append(
+                f"  Long-Term Debt: Rs. {itr_data.long_term_debt:,.0f}")
+        if hasattr(itr_data, 'short_term_debt') and itr_data.short_term_debt > 0:
+            lines.append(
+                f"  Short-Term Debt: Rs. {itr_data.short_term_debt:,.0f}")
+        if hasattr(itr_data, 'ebitda') and itr_data.ebitda > 0:
+            lines.append(f"  EBITDA: Rs. {itr_data.ebitda:,.0f}")
+        if hasattr(itr_data, 'interest_expense') and itr_data.interest_expense > 0:
+            lines.append(
+                f"  Interest Expense: Rs. {itr_data.interest_expense:,.0f}")
+
+    # BUG FIX 4: Derived ratios — auto-computed from documents.
+    # Without this the LLM sees raw numbers but not D/E ratio, DSCR etc.,
+    # forcing it to either skip capital/capacity analysis or make things up.
+    if derived:
+        lines.append(
+            "\nDERIVED FINANCIAL RATIOS (auto-computed from documents):")
+        if derived.debt_equity_ratio is not None:
+            lines.append(
+                f"  Debt/Equity Ratio: {derived.debt_equity_ratio:.2f}x")
+        if derived.dscr is not None:
+            lines.append(f"  DSCR: {derived.dscr:.2f}x")
+        if derived.net_profit_margin is not None:
+            lines.append(
+                f"  Net Profit Margin: {derived.net_profit_margin:.1f}%")
+        if derived.avg_monthly_balance_inr is not None:
+            lines.append(
+                f"  Avg Monthly Balance: Rs. {derived.avg_monthly_balance_inr:,.0f}")
+        if derived.net_worth_inr is not None:
+            lines.append(
+                f"  Net Worth (derived): Rs. {derived.net_worth_inr:,.0f}")
+        if derived.data_completeness_pct is not None:
+            lines.append(
+                f"  Data Completeness: {derived.data_completeness_pct:.0f}%")
+        if derived.derivation_notes:
+            for note in derived.derivation_notes:
+                lines.append(f"  Note: {note}")
 
     return "\n".join(lines) if lines else "No financial data available"
 
 
 def format_research_data(research=None) -> str:
-    """Format research findings into prompt-ready text"""
+    """Format research findings into prompt-ready text."""
     if not research:
         return "No external research data available"
 
@@ -251,7 +315,13 @@ def format_research_data(research=None) -> str:
 
 
 def format_qualitative_data(qualitative=None) -> str:
-    """Format officer inputs into prompt-ready text"""
+    """
+    Format officer inputs into prompt-ready text.
+
+    BUG FIX 5: Added net_worth_inr — previously the LLM saw D/E ratio and
+    collateral% but not net worth, which is a core Capital C input. The LLM
+    was assessing capital strength without the most important number.
+    """
     if not qualitative:
         return "No officer observations provided"
 
@@ -264,31 +334,25 @@ def format_qualitative_data(qualitative=None) -> str:
     lines.append(f"Debt/Equity Ratio: {qualitative.debt_equity_ratio}")
     lines.append(
         f"Collateral Coverage: {qualitative.collateral_coverage * 100:.0f}%")
+    # BUG FIX 5: net_worth_inr was missing from the prompt
+    lines.append(f"Net Worth: Rs. {qualitative.net_worth_inr:,.0f}")
     lines.append(f"Sector Risk Score: {qualitative.sector_risk_score}/10")
     lines.append(f"Promoter Score: {qualitative.promoter_score}/10")
+
+    # Show which fields were auto-filled from documents (transparency for LLM)
+    if hasattr(qualitative, 'auto_filled_fields') and qualitative.auto_filled_fields:
+        lines.append(
+            f"Auto-filled from documents: {', '.join(qualitative.auto_filled_fields)}")
 
     return "\n".join(lines)
 
 
-# ─── QUICK TEST ──────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     print("Prompts loaded successfully!")
-    print(f"\nAvailable prompts:")
+    print("\nAvailable prompts:")
     print("  - CREDIT_ANALYSIS_PROMPT")
     print("  - FIVE_CS_PROMPT")
     print("  - RESEARCH_SUMMARY_PROMPT")
     print("  - EARLY_WARNING_PROMPT")
     print("  - QUALITATIVE_ADJUSTMENT_PROMPT")
     print("  - CAM_SUMMARY_PROMPT")
-
-    print("\nSample formatted financial data:")
-    from src.schemas import GSTData
-    sample_gst = GSTData(
-        gstin="27AABCU9603R1ZX",
-        company_name="ABC Private Limited",
-        turnover=4500000,
-        total_tax=500000,
-        itc_claimed=80000
-    )
-    print(format_financial_data(gst_data=sample_gst))
