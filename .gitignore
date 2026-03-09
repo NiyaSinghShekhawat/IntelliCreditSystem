@@ -8,8 +8,7 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Outputs
-outputs/
+
 
 # ChromaDB
 chroma_db/
