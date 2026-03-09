@@ -246,7 +246,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📊 About")
     st.markdown("""
-    **IntelliCredit v1.2**
+    **IntelliCredit v1.4**
     - 🤖 LLM: Groq LLaMA 3.3 70B
     - 📊 ML: XGBoost + SHAP
     - 📄 Parser: Docling
@@ -255,6 +255,17 @@ with st.sidebar:
 
 
 # ─── TABS ────────────────────────────────────────────────────────────────────
+
+# Auto-switch to Results tab when analysis completes
+if st.session_state.get("switch_to_results"):
+    st.session_state["switch_to_results"] = False
+    import streamlit.components.v1 as _c
+    _c.html("""<script>
+        setTimeout(function() {
+            var tabs = window.parent.document.querySelectorAll('[data-baseweb="tab"]');
+            if (tabs.length >= 3) tabs[2].click();
+        }, 300);
+    </script>""", height=0)
 
 tab1, tab2, tab3 = st.tabs([
     "📁 Upload Documents",
@@ -621,7 +632,7 @@ with tab3:
 
             st.markdown("---")
             st.markdown("#### 📥 Reports")
-            col_dl1, col_dl2, col_dl3 = st.columns([2, 2, 1])
+            col_dl1, col_dl2 = st.columns(2)
 
             if "pdf_path" in st.session_state:
                 with col_dl1:
@@ -633,9 +644,6 @@ with tab3:
                             mime="application/pdf",
                             use_container_width=True,
                         )
-                with col_dl3:
-                    if st.button("👁 View PDF", use_container_width=True):
-                        st.session_state["show_pdf_modal"] = True
 
             if "docx_path" in st.session_state:
                 with col_dl2:
@@ -650,167 +658,6 @@ with tab3:
                             ),
                             use_container_width=True,
                         )
-
-            # ── inline PDF viewer (modal overlay) ────────────────────────────
-            if st.session_state.get("show_pdf_modal") and "pdf_path" in st.session_state:
-                import base64
-                import streamlit.components.v1 as components
-
-                with open(st.session_state["pdf_path"], "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode("utf-8")
-
-                pdf_html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-<style>
-  * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ background:#1a1a2e; font-family: Arial, sans-serif; }}
-
-  .modal-backdrop {{
-    position: fixed;
-    inset: 0;
-    background: rgba(10,12,30,0.92);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9999;
-    animation: fadeIn 0.18s ease;
-  }}
-  @keyframes fadeIn {{ from {{ opacity:0 }} to {{ opacity:1 }} }}
-
-  .modal-box {{
-    background: #0d1f5c;
-    border: 1.5px solid #c9970a;
-    border-radius: 10px;
-    width: 92vw;
-    max-width: 960px;
-    height: 90vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    box-shadow: 0 8px 48px rgba(0,0,0,0.7);
-    animation: slideUp 0.2s ease;
-  }}
-  @keyframes slideUp {{ from {{ transform:translateY(24px); opacity:0 }} to {{ transform:translateY(0); opacity:1 }} }}
-
-  .modal-header {{
-    background: #0d1f5c;
-    border-bottom: 1.5px solid #c9970a;
-    padding: 12px 18px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }}
-  .modal-title {{
-    color: #ffffff;
-    font-size: 14px;
-    font-weight: bold;
-    letter-spacing: 0.04em;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }}
-  .modal-title .dot {{
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: #c9970a;
-    display: inline-block;
-  }}
-  .btn-close {{
-    background: #b71c1c;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 14px;
-    font-size: 13px;
-    font-weight: bold;
-    cursor: pointer;
-    letter-spacing: 0.03em;
-    transition: background 0.15s;
-  }}
-  .btn-close:hover {{ background: #d32f2f; }}
-
-  .modal-toolbar {{
-    background: #111a3e;
-    border-bottom: 1px solid #1e2d6e;
-    padding: 7px 18px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-  }}
-  .toolbar-label {{
-    color: #8895c0;
-    font-size: 11.5px;
-    letter-spacing: 0.03em;
-  }}
-  .toolbar-badge {{
-    background: #1a3080;
-    color: #b8c8f0;
-    border-radius: 4px;
-    padding: 2px 10px;
-    font-size: 11px;
-    font-weight: bold;
-    letter-spacing: 0.05em;
-  }}
-
-  .pdf-frame {{
-    flex: 1;
-    border: none;
-    width: 100%;
-    background: #f5f5f5;
-  }}
-</style>
-</head>
-<body>
-<div class="modal-backdrop" id="modal">
-  <div class="modal-box">
-    <div class="modal-header">
-      <div class="modal-title">
-        <span class="dot"></span>
-        CREDIT APPRAISAL MEMORANDUM — IntelliCredit
-      </div>
-      <button class="btn-close" onclick="closeModal()">✕ Close</button>
-    </div>
-    <div class="modal-toolbar">
-      <span class="toolbar-label">Document:</span>
-      <span class="toolbar-badge">📄 CAM_Report.pdf</span>
-      <span class="toolbar-label" style="margin-left:auto;">Scroll or use browser PDF controls to zoom</span>
-    </div>
-    <iframe
-      class="pdf-frame"
-      src="data:application/pdf;base64,{b64}"
-    ></iframe>
-  </div>
-</div>
-
-<script>
-  function closeModal() {{
-    document.getElementById('modal').style.display = 'none';
-    window.parent.postMessage({{type: 'streamlit:setComponentValue', value: false}}, '*');
-  }}
-  // Close on backdrop click
-  document.getElementById('modal').addEventListener('click', function(e) {{
-    if (e.target === this) closeModal();
-  }});
-  // Close on Escape
-  document.addEventListener('keydown', function(e) {{
-    if (e.key === 'Escape') closeModal();
-  }});
-</script>
-</body>
-</html>
-"""
-                components.html(pdf_html, height=700, scrolling=False)
-
-                col_c1, col_c2, col_c3 = st.columns([3, 2, 3])
-                with col_c2:
-                    if st.button("✕  Close PDF Viewer", use_container_width=True):
-                        st.session_state["show_pdf_modal"] = False
-                        st.rerun()
 
 
 # ─── RUN ANALYSIS PIPELINE ───────────────────────────────────────────────────
@@ -841,8 +688,11 @@ if run_button and company_name:
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 tmp.write(uploaded_file.read())
                 tmp_path = tmp.name
+            tmp_path = str(Path(tmp_path).resolve())  # always absolute path
             _tmp_files.append(tmp_path)   # schedule for cleanup later
             parsed = parser.parse(tmp_path)
+            # Guarantee source_file is absolute so openpyxl fallback can find it
+            parsed.source_file = tmp_path
             # NOTE: do NOT unlink here — extractor needs the file for xlsx fallback
             return parsed
 
@@ -980,6 +830,7 @@ if run_button and company_name:
         st.session_state["docx_path"] = paths["docx"]
 
     st.session_state["analysis_result"] = result
-    st.session_state["show_pdf_modal"] = True   # trigger inline PDF viewer
+    st.session_state["switch_to_results"] = True  # auto-switch to Results tab
     st.success("✅ Analysis complete!")
     st.balloons()
+    st.rerun()

@@ -220,13 +220,21 @@ class ResearchAgent:
 
     def _build_relevance_tokens(self, company_name: str) -> set:
         """Extract meaningful tokens from company name for relevance filtering."""
+        import unicodedata
         stopwords = {"pvt", "ltd", "private", "limited", "co", "india",
-                     "the", "and", "of", "for", "in", "a", "an", "inc", "llp"}
+                     "the", "and", "of", "for", "in", "a", "an", "inc", "llp",
+                     "cosmetics", "industries", "manufacturing", "traders",
+                     "enterprises", "solutions", "services"}
         tokens = set()
         for token in company_name.lower().split():
             clean = token.strip(".,()-&")
+            # Normalize accents: Lakmé → lakme
+            clean_ascii = unicodedata.normalize(
+                "NFKD", clean).encode("ascii", "ignore").decode()
             if clean not in stopwords and len(clean) > 2:
                 tokens.add(clean)
+            if clean_ascii not in stopwords and len(clean_ascii) > 2 and clean_ascii != clean:
+                tokens.add(clean_ascii)  # also add accent-stripped version
         return tokens
 
     def _is_relevant_to_company(self, title: str, relevance_tokens: set,
@@ -234,30 +242,46 @@ class ResearchAgent:
         """
         Check if a news article title is actually about the company.
 
-        Strategy (in order of preference):
+        Strategy:
           1. Full company name substring present → definitely relevant
-          2. ALL meaningful tokens present → likely relevant
-          3. Only SOME tokens present → reject (e.g. "Rajesh" alone matches
-             unrelated articles about other people named Rajesh)
-
-        This prevents false positives like a crime article about "Rajesh Mehta"
-        (Lilavati Hospital) appearing for a search on "Sunrise Apparels" whose
-        promoter happens to also be named Rajesh Mehta.
+          2. Brand name token (longest token) present → relevant for known brands
+          3. ALL tokens present → relevant
+          4. Only generic/short tokens → reject
         """
         if not relevance_tokens:
             return True
-        title_lower = title.lower()
 
-        # Best check: full company name present (case-insensitive substring)
+        import unicodedata
+        title_lower = title.lower()
+        # Normalize accents in title too
+        title_normalized = unicodedata.normalize(
+            "NFKD", title_lower).encode("ascii", "ignore").decode()
+
+        # Best check: full company name present
         if company_name and company_name.lower() in title_lower:
             return True
 
-        # Strong check: ALL tokens present
-        if len(relevance_tokens) >= 2:
-            return all(t in title_lower for t in relevance_tokens)
+        # Accent-normalized full name check
+        cn_normalized = unicodedata.normalize(
+            "NFKD", company_name.lower()).encode("ascii", "ignore").decode()
+        if cn_normalized and cn_normalized in title_normalized:
+            return True
 
-        # Single token: just require it to be present
-        return any(t in title_lower for t in relevance_tokens)
+        # Brand name check: if one token is a long distinctive word (5+ chars),
+        # its presence alone is sufficient (e.g. "lakme", "infosys", "reliance")
+        long_tokens = [t for t in relevance_tokens if len(t) >= 5]
+        if long_tokens:
+            if any(t in title_lower or t in title_normalized for t in long_tokens):
+                return True
+
+        # All-tokens check for multi-word company names
+        if len(relevance_tokens) >= 2:
+            return all(
+                t in title_lower or t in title_normalized
+                for t in relevance_tokens
+            )
+
+        return any(t in title_lower or t in title_normalized for t in relevance_tokens)
 
     def _search_gdelt(self, query: str, company_name: str = "") -> List[NewsItem]:
         items = []

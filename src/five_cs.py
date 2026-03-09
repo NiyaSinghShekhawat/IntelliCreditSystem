@@ -254,7 +254,12 @@ class FiveCsAnalyzer:
                 score -= 3.0
                 factors.append(f"High D/E ratio ({de_ratio}) — over-leveraged")
 
-            net_worth = result.qualitative_inputs.net_worth_inr
+            # Prefer derived net worth from ITR over officer slider default
+            net_worth = (
+                result.derived_financials.net_worth_inr
+                if result.derived_financials and result.derived_financials.net_worth_inr
+                else result.qualitative_inputs.net_worth_inr
+            )
             details["net_worth"] = net_worth
             if net_worth > 10_000_000:
                 score += 2.0

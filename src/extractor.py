@@ -35,19 +35,20 @@ Fields to extract:
 - gstin: string (15-char GST identification number, e.g. "27AABCU9603R1ZX")
 - company_name: string
 - tax_period: string (e.g. "April 2023 - March 2024")
-- turnover: number (total taxable turnover in INR, as a plain number)
-- igst: number (IGST amount in INR)
-- cgst: number (CGST amount in INR)
-- sgst: number (SGST amount in INR)
-- total_tax: number (total GST paid in INR)
-- itc_claimed: number (TOTAL Input Tax Credit claimed/available in INR — use grand total row, not individual supplier rows)
-- filing_regular: boolean (true if filing appears regular/consistent)
+- turnover: number (Total Taxable Turnover from OUTWARD SUPPLIES section in INR — NOT invoice values from supplier rows, NOT ITC amounts. Look for "Total Taxable Turnover" or "Aggregate Turnover". If document is GSTR-2A with only supplier rows and no turnover row, use null.)
+- igst: number (IGST on outward supplies in INR)
+- cgst: number (CGST on outward supplies in INR)
+- sgst: number (SGST on outward supplies in INR)
+- total_tax: number (total GST paid in INR — sum of IGST+CGST+SGST on outward supplies)
+- itc_claimed: number (TOTAL Input Tax Credit in INR. Priority: use "TOTAL ITC CLAIMED", "Net ITC Available", or "Grand Total ITC" row if present. If no grand total row exists but individual supplier ITC rows are present (GSTR-2A format), SUM all individual "ITC Available" values from supplier rows to get the total. Never use a single supplier row as the total.)
+- filing_regular: boolean (true if filing appears regular/on-time)
 
-Rules:
+Critical rules:
 - All monetary values must be plain numbers (no commas, no currency symbols)
-- If a value is not found, use null
-- For itc_claimed: look for "Total ITC", "Net ITC Available", "Grand Total ITC", "Total Input Tax Credit" — always use the GRAND TOTAL row
-- turnover should be the annual or period total, not a monthly figure
+- If a value is not found, use null — do NOT guess or infer
+- turnover: ONLY from "Total Taxable Turnover" or "Aggregate Turnover" row. GSTR-2A documents typically do NOT have a turnover field — return null if not present.
+- itc_claimed: use GRAND TOTAL row only — never individual supplier rows
+- Do not confuse invoice value with turnover — invoice values are per-supplier amounts
 
 DOCUMENT TEXT:
 {text}
@@ -131,39 +132,82 @@ class FinancialExtractor:
     def __init__(self):
         self._groq_client = None
         self._groq_available = False
+        self._gemini_available = False
+        self._gemini_model = None
         self._init_groq()
+        self._init_gemini()
 
     def _init_groq(self):
         """Initialise Groq client for LLM extraction."""
         try:
             from groq import Groq
-            if GROQ_API_KEY:
-                self._groq_client = Groq(api_key=GROQ_API_KEY)
+            from config import GROQ_API_KEYS
+            if GROQ_API_KEYS:
+                self._groq_keys = list(GROQ_API_KEYS)  # all available keys
+                self._groq_client = Groq(api_key=self._groq_keys[0])
                 self._groq_available = True
-                print("Extractor: Groq LLM extraction enabled.")
+                print(f"Extractor: Groq LLM extraction enabled. "
+                      f"{len(self._groq_keys)} key(s) available.")
             else:
+                self._groq_keys = []
                 print("Extractor: GROQ_API_KEY not set — using regex fallback.")
         except ImportError:
+            self._groq_keys = []
             print("Extractor: groq package not installed — using regex fallback.")
         except Exception as e:
+            self._groq_keys = []
             print(f"Extractor: Groq init failed ({e}) — using regex fallback.")
 
-    def _groq_extract(self, prompt: str, doc_label: str) -> Optional[dict]:
-        """
-        Call Groq LLM with an extraction prompt.
-        Returns parsed JSON dict or None on any failure.
-        """
-        if not self._groq_available or not self._groq_client:
-            return None
-
+    def _init_gemini(self):
+        """Initialise Gemini as secondary LLM backend (fallback when Groq exhausted).
+        Supports both google-generativeai 0.8.x and google-genai 1.x SDKs."""
         try:
-            response = self._groq_client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                max_tokens=1024,
-            )
-            raw = response.choices[0].message.content.strip()
+            from config import GEMINI_API_KEY
+            if not GEMINI_API_KEY:
+                print("Extractor: GEMINI_API_KEY not set — Gemini fallback disabled.")
+                return
+
+            self._gemini_is_new_sdk = False
+            try:
+                # Try old SDK first (google-generativeai 0.8.x)
+                import google.genai as genai
+                genai.configure(api_key=GEMINI_API_KEY)
+                self._gemini_model = genai.GenerativeModel(
+                    model_name="gemini-1.5-flash",
+                    generation_config=genai.GenerationConfig(
+                        temperature=0.0,
+                        max_output_tokens=1024,
+                    )
+                )
+            except (ImportError, AttributeError):
+                # Fall back to new SDK (google-genai 1.x)
+                import google.genai as genai
+                self._gemini_model = genai.Client(api_key=GEMINI_API_KEY)
+                self._gemini_is_new_sdk = True
+
+            self._gemini_available = True
+            print("Extractor: Gemini fallback enabled (gemini-1.5-flash).")
+        except ImportError:
+            print(
+                "Extractor: google-generativeai not installed — Gemini fallback disabled.")
+        except Exception as e:
+            print(f"Extractor: Gemini init failed ({e}).")
+
+    def _gemini_extract(self, prompt: str, doc_label: str) -> Optional[dict]:
+        """
+        Call Gemini 1.5 Flash as fallback when all Groq keys are exhausted.
+        Uses identical prompts — output format is the same JSON structure.
+        """
+        if not self._gemini_available or not self._gemini_model:
+            return None
+        try:
+            if getattr(self, "_gemini_is_new_sdk", False):
+                response = self._gemini_model.models.generate_content(
+                    model="gemini-1.5-flash", contents=prompt)
+                raw = response.candidates[0].content.parts[0].text.strip()
+            else:
+                response = self._gemini_model.generate_content(prompt)
+                raw = response.text.strip()
 
             # Strip markdown fences if present
             raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
@@ -171,16 +215,90 @@ class FinancialExtractor:
             raw = raw.strip()
 
             data = json.loads(raw)
-            if DEBUG_MODE:
-                print(f"Groq extracted {doc_label}: {data}")
+            print(f"Gemini extracted {doc_label} successfully.")
             return data
 
         except json.JSONDecodeError as e:
-            print(f"Groq JSON parse error for {doc_label}: {e}")
+            print(f"Gemini JSON parse error for {doc_label}: {e}")
             return None
         except Exception as e:
-            print(f"Groq extraction failed for {doc_label}: {e}")
+            print(f"Gemini extraction failed for {doc_label}: {e}")
             return None
+
+    def _llm_extract(self, prompt: str, doc_label: str) -> Optional[dict]:
+        """
+        Unified LLM extraction entry point.
+        Priority: Groq (with key rotation) → Gemini → None (regex/openpyxl fallback)
+        """
+        # Try Groq first
+        result = self._groq_extract(prompt, doc_label)
+        if result is not None:
+            return result
+
+        # Groq exhausted or unavailable — try Gemini
+        if self._gemini_available:
+            print(f"Groq unavailable for {doc_label} — trying Gemini...")
+            result = self._gemini_extract(prompt, doc_label)
+            if result is not None:
+                return result
+
+        return None
+
+    def _groq_extract(self, prompt: str, doc_label: str) -> Optional[dict]:
+        """
+        Call Groq LLM with an extraction prompt.
+        Automatically rotates to the next API key on rate limit (429) errors.
+        Returns parsed JSON dict or None on all failures.
+        """
+        if not self._groq_available:
+            return None
+
+        from groq import Groq
+
+        keys_to_try = list(getattr(self, "_groq_keys", []))
+        if not keys_to_try:
+            return None
+
+        for i, key in enumerate(keys_to_try):
+            try:
+                client = Groq(api_key=key)
+                response = client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    max_tokens=1024,
+                )
+                raw = response.choices[0].message.content.strip()
+
+                # Strip markdown fences if present
+                raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
+                raw = re.sub(r'\s*```$', '', raw, flags=re.MULTILINE)
+                raw = raw.strip()
+
+                data = json.loads(raw)
+                if DEBUG_MODE:
+                    print(f"Groq extracted {doc_label}: {data}")
+                return data
+
+            except json.JSONDecodeError as e:
+                print(f"Groq JSON parse error for {doc_label}: {e}")
+                return None  # JSON error won't be fixed by rotating keys
+
+            except Exception as e:
+                err_str = str(e)
+                if "429" in err_str or "rate_limit" in err_str.lower():
+                    if i < len(keys_to_try) - 1:
+                        print(
+                            f"Groq key {i+1} rate limited — rotating to key {i+2}...")
+                        continue
+                    else:
+                        print(
+                            f"Groq: all {len(keys_to_try)} key(s) exhausted — using fallback.")
+                        return None
+                print(f"Groq extraction failed for {doc_label}: {e}")
+                return None
+
+        return None
 
     def _g(self, data: dict, key: str, default=0.0):
         """Safe getter — returns default if key missing or null."""
@@ -208,13 +326,13 @@ class FinancialExtractor:
     # ─── GST EXTRACTION ──────────────────────────────────────────────────────
 
     def extract_gst(self, parsed: ParsedDocument) -> GSTData:
-        """Extract GST return data. Groq primary, regex fallback."""
+        """Extract GST return data. Groq primary, xlsx fallback always runs for xlsx files."""
         gst = GSTData()
 
-        if self._groq_available:
+        if self._groq_available or self._gemini_available:
             prompt = _GST_PROMPT.format(
                 text=self._truncate_text(parsed.raw_text))
-            data = self._groq_extract(prompt, "GST")
+            data = self._llm_extract(prompt, "GST")
             if data:
                 gst.gstin = self._g(data, "gstin", "")
                 gst.company_name = self._g(data, "company_name", "")
@@ -227,15 +345,22 @@ class FinancialExtractor:
                 gst.filing_regular = bool(data.get("filing_regular", True))
                 gst.total_tax = (self._g(data, "total_tax", 0.0)
                                  or gst.igst + gst.cgst + gst.sgst)
+                if DEBUG_MODE:
+                    print(
+                        f"GST via Groq: turnover={gst.turnover}, itc={gst.itc_claimed}")
 
-                if gst.turnover > 0 or gst.itc_claimed > 0:
-                    if DEBUG_MODE:
-                        print(
-                            f"GST via Groq: turnover={gst.turnover}, itc={gst.itc_claimed}")
-                    return gst
+        # Always run xlsx fallback for xlsx files — Groq often hallucinated the
+        # wrong ITC (e.g. returns 3B value for 2A file). Xlsx fallback reads
+        # the actual column values directly so it's always more reliable.
+        if parsed.source_file and parsed.source_file.lower().endswith(('.xlsx', '.xls')):
+            gst = self._extract_gst_itc_from_xlsx(parsed.source_file, gst)
+        elif gst.turnover == 0 and gst.itc_claimed == 0:
+            print("GST: Groq returned zeros — running regex fallback.")
+            return self._extract_gst_regex(parsed)
 
-        print("GST: Groq returned zeros — running regex fallback.")
-        return self._extract_gst_regex(parsed)
+        print(
+            f"GST final: turnover={gst.turnover}, itc={gst.itc_claimed}, gstin={gst.gstin}")
+        return gst
 
     def _extract_gst_regex(self, parsed: ParsedDocument) -> GSTData:
         text = parsed.raw_text
@@ -337,14 +462,135 @@ class FinancialExtractor:
 
         return gst
 
+    def _extract_gst_itc_from_xlsx(self, file_path: str, gst: "GSTData") -> "GSTData":
+        """Direct openpyxl scan: sum ITC column from GSTR-2A supplier rows,
+        or read TOTAL ITC CLAIMED row from GSTR-3B."""
+        try:
+            import openpyxl
+            from pathlib import Path as _Path
+            import tempfile as _tempfile
+
+            if not file_path:
+                return gst
+            p = _Path(file_path)
+            if not p.is_absolute():
+                p = _Path(_tempfile.gettempdir()) / p.name
+            if not p.exists() or not str(p).lower().endswith(('.xlsx', '.xls')):
+                return gst
+
+            wb = openpyxl.load_workbook(str(p), data_only=True)
+
+            def to_float(cell):
+                if cell is None:
+                    return None
+                if isinstance(cell, (int, float)):
+                    return float(cell) if float(cell) > 0 else None
+                if isinstance(cell, str):
+                    cleaned = cell.replace(',', '').replace(
+                        '₹', '').replace('Rs.', '').strip()
+                    try:
+                        v = float(cleaned)
+                        return v if v > 0 else None
+                    except ValueError:
+                        return None
+                return None
+
+            # Keywords — 3B grand total row (only present in 3B files)
+            total_itc_3b_kw = ['total itc claimed',
+                               'net itc available', 'grand total itc']
+            # ITC column header keywords (present in 2A supplier table)
+            itc_col_kw = ['itc available', 'itc (₹)', 'input tax credit']
+            # Rows to SKIP — reconciliation notes embedded in 2A that reference 3B
+            skip_row_kw = ['itc claimed in gstr-3b', 'itc claimed in 3b',
+                           'claimed in gstr', 'variance', 'reconciliation']
+            turnover_kw = ['total taxable turnover', 'aggregate turnover',
+                           'taxable turnover']
+
+            for sh in wb.sheetnames:
+                ws = wb[sh]
+                rows = list(ws.iter_rows(values_only=True))
+
+                # Step 1: Try 3B-style grand total row
+                # Skip any row that looks like a reconciliation note referencing 3B
+                for row in rows:
+                    row_text = ' '.join(str(c).lower()
+                                        for c in row if c is not None)
+                    if any(skip in row_text for skip in skip_row_kw):
+                        continue
+                    if any(kw in row_text for kw in total_itc_3b_kw):
+                        for cell in row:
+                            v = to_float(cell)
+                            if v and v > 10000:
+                                gst.itc_claimed = v
+                                print(
+                                    f"GST xlsx: grand_total row → itc={v:,.0f}")
+                                break
+                    if gst.itc_claimed > 0:
+                        break
+
+                # Step 2: Find ITC column header and sum supplier rows (2A style)
+                # Always do this for 2A files — overrides step 1 if sum differs
+                header_row_idx = None
+                itc_col_idx = None
+                for i, row in enumerate(rows):
+                    row_text = ' '.join(str(c).lower()
+                                        for c in row if c is not None)
+                    if any(kw in row_text for kw in itc_col_kw):
+                        header_row_idx = i
+                        for j, cell in enumerate(row):
+                            if cell and any(kw in str(cell).lower() for kw in itc_col_kw):
+                                itc_col_idx = j
+                                break
+                        break
+
+                if header_row_idx is not None and itc_col_idx is not None:
+                    itc_sum = 0.0
+                    for row in rows[header_row_idx + 1:]:
+                        row_text = ' '.join(str(c).lower()
+                                            for c in row if c is not None)
+                        # Skip summary/reconciliation rows — only count supplier data rows
+                        if any(skip in row_text for skip in skip_row_kw):
+                            continue
+                        if any(kw in row_text for kw in ['total', 'grand total', 'net itc']):
+                            continue
+                        if itc_col_idx < len(row):
+                            v = to_float(row[itc_col_idx])
+                            if v and v > 1000:
+                                itc_sum += v
+                    if itc_sum > 0:
+                        gst.itc_claimed = itc_sum
+                        print(f"GST xlsx: supplier column sum → itc={itc_sum:,.0f} "
+                              f"(header_row={header_row_idx}, col={itc_col_idx})")
+
+                # Step 3: Extract turnover if missing
+                if gst.turnover == 0:
+                    for row in rows:
+                        row_text = ' '.join(str(c).lower()
+                                            for c in row if c is not None)
+                        if any(kw in row_text for kw in turnover_kw):
+                            for cell in row:
+                                v = to_float(cell)
+                                if v and v > 100000:
+                                    gst.turnover = v
+                                    break
+                        if gst.turnover > 0:
+                            break
+
+            print(
+                f"GST xlsx fallback: itc={gst.itc_claimed:,.0f}, turnover={gst.turnover:,.0f}")
+
+        except Exception as e:
+            print(f"GST xlsx fallback error: {e}")
+        return gst
+
     # ─── BANK STATEMENT EXTRACTION ───────────────────────────────────────────
 
     def extract_bank(self, parsed: ParsedDocument) -> BankStatementData:
         """Extract bank statement data. Groq primary, regex fallback."""
-        if self._groq_available:
+        if self._groq_available or self._gemini_available:
             prompt = _BANK_PROMPT.format(
                 text=self._truncate_text(parsed.raw_text))
-            data = self._groq_extract(prompt, "Bank")
+            data = self._llm_extract(prompt, "Bank")
             if data:
                 mc = data.get("monthly_credits")
                 md = data.get("monthly_debits")
@@ -445,6 +691,15 @@ class FinancialExtractor:
                 text, re.IGNORECASE))
 
         bank = self._extract_bank_from_tables(bank, parsed.tables)
+
+        # Always run xlsx fallback for xlsx files — reads the correct summary
+        # row ("Average Daily Balance") instead of averaging all running balances
+        print(f"Bank regex result: avg_bal={bank.average_monthly_balance}, "
+              f"credits={bank.total_credits}, debits={bank.total_debits}")
+        if parsed.source_file and parsed.source_file.lower().endswith(('.xlsx', '.xls')):
+            bank = self._extract_bank_balance_from_xlsx(
+                parsed.source_file, bank)
+
         return bank
 
     def _detect_bank_header(self, header_row: list) -> dict:
@@ -518,16 +773,155 @@ class FinancialExtractor:
 
         return bank
 
+    def _extract_bank_balance_from_xlsx(self, file_path: str, bank: "BankStatementData") -> "BankStatementData":
+        """Direct openpyxl scan for average monthly balance when regex/Groq miss it."""
+        try:
+            import openpyxl
+            from pathlib import Path as _Path
+            import tempfile as _tempfile
+
+            if not file_path:
+                return bank
+            p = _Path(file_path)
+            if not p.is_absolute():
+                p = _Path(_tempfile.gettempdir()) / p.name
+            if not p.exists() or not str(p).lower().endswith(('.xlsx', '.xls')):
+                return bank
+
+            wb = openpyxl.load_workbook(str(p), data_only=True)
+
+            def to_float(cell):
+                """Parse numeric cell — handles both real numbers and
+                Indian comma-formatted strings like '1,18,50,000'."""
+                if cell is None:
+                    return None
+                if isinstance(cell, (int, float)):
+                    return float(cell)
+                if isinstance(cell, str):
+                    cleaned = cell.replace(',', '').replace(
+                        '₹', '').replace('Rs.', '').strip()
+                    try:
+                        return float(cleaned)
+                    except ValueError:
+                        return None
+                return None
+
+            # Keywords for summary rows
+            avg_daily_kw = ['average daily balance', 'avg daily balance']
+            avg_monthly_kw = ['average monthly balance', 'avg monthly balance',
+                              'average monthly credits', 'avg monthly credits']
+            avg_credit_kw = ['average monthly credits', 'avg monthly credits']
+            avg_debit_kw = ['average monthly debits', 'avg monthly debits']
+            total_credit_kw = ['total credits', 'total deposits']
+            total_debit_kw = ['total debits', 'total withdrawals']
+            month_end_kw = ['month-end balance',
+                            'closing balance', 'opening balance']
+
+            month_end_balances = []
+            all_credits = []
+            all_debits = []
+
+            for sh in wb.sheetnames:
+                ws = wb[sh]
+                rows = list(ws.iter_rows(values_only=True))
+
+                for i, row in enumerate(rows):
+                    row_text = ' '.join(str(c).lower()
+                                        for c in row if c is not None)
+                    if not row_text.strip():
+                        continue
+
+                    # ── Summary row: Average Daily Balance ───────────────────
+                    # Always override — summary row is more accurate than
+                    # averaging running balances from transaction ledger
+                    if any(kw in row_text for kw in avg_daily_kw):
+                        for cell in row:
+                            v = to_float(cell)
+                            if v and v > 10000:
+                                bank.average_monthly_balance = v
+                                break
+
+                    # ── Summary row: Average Monthly Credits ─────────────────
+                    if bank.total_credits == 0:
+                        if any(kw in row_text for kw in avg_credit_kw):
+                            for cell in row:
+                                v = to_float(cell)
+                                if v and v > 10000:
+                                    # avg monthly * 6 months = total
+                                    bank.total_credits = v * 6
+                                    break
+
+                    # ── Summary row: Average Monthly Debits ──────────────────
+                    if bank.total_debits == 0:
+                        if any(kw in row_text for kw in avg_debit_kw):
+                            for cell in row:
+                                v = to_float(cell)
+                                if v and v > 10000:
+                                    bank.total_debits = v * 6
+                                    break
+
+                    # ── Transaction ledger: collect month-end balances ────────
+                    if any(kw in row_text for kw in month_end_kw):
+                        for cell in row:
+                            v = to_float(cell)
+                            if v and v > 100000:
+                                month_end_balances.append(v)
+                                break
+
+                    # ── Transaction ledger: sum credits and debits ────────────
+                    # Row format: Date | Desc | Ref | Debit | Credit | Balance
+                    if len(row) >= 6:
+                        debit_cell = row[3]
+                        credit_cell = row[4]
+                        debit_v = to_float(debit_cell)
+                        credit_v = to_float(credit_cell)
+                        if credit_v and credit_v > 100000:
+                            all_credits.append(credit_v)
+                        if debit_v and debit_v > 100000:
+                            all_debits.append(debit_v)
+
+            # Derive average monthly balance from month-end balances if not set
+            if bank.average_monthly_balance == 0 and month_end_balances:
+                bank.average_monthly_balance = round(
+                    sum(month_end_balances) / len(month_end_balances), 2
+                )
+
+            # Derive total credits/debits from ledger if summary rows weren't found
+            if bank.total_credits == 0 and all_credits:
+                bank.total_credits = round(sum(all_credits), 2)
+            if bank.total_debits == 0 and all_debits:
+                bank.total_debits = round(sum(all_debits), 2)
+
+            # EMI bounce count from ledger if not already set
+            if bank.emi_bounce_count == 0:
+                bounce_kw = ['bounce', 'return',
+                             'nach return', 'ecs return', 'dishonour']
+                for sh in wb.sheetnames:
+                    ws = wb[sh]
+                    for row in ws.iter_rows(values_only=True):
+                        row_text = ' '.join(str(c).lower()
+                                            for c in row if c is not None)
+                        if any(kw in row_text for kw in bounce_kw):
+                            bank.emi_bounce_count += 1
+
+            print(f"Bank xlsx fallback: avg_bal={bank.average_monthly_balance:,.0f}, "
+                  f"credits={bank.total_credits:,.0f}, debits={bank.total_debits:,.0f}, "
+                  f"bounces={bank.emi_bounce_count}")
+
+        except Exception as e:
+            print(f"Bank xlsx fallback error: {e}")
+        return bank
+
     # ─── ITR EXTRACTION ──────────────────────────────────────────────────────
 
     def extract_itr(self, parsed: ParsedDocument) -> ITRData:
         """Extract ITR / financial statement data. Groq primary, regex fallback."""
         itr = ITRData()
 
-        if self._groq_available:
+        if self._groq_available or self._gemini_available:
             prompt = _ITR_PROMPT.format(
                 text=self._truncate_text(parsed.raw_text))
-            data = self._groq_extract(prompt, "ITR")
+            data = self._llm_extract(prompt, "ITR")
             if data:
                 itr.pan = self._g(data, "pan", "")
                 itr.assessment_year = self._g(data, "assessment_year", "")
@@ -556,7 +950,20 @@ class FinancialExtractor:
                     return itr
 
         print("ITR: Groq returned zeros — running regex fallback.")
-        return self._extract_itr_regex(parsed)
+        itr = self._extract_itr_regex(parsed)
+
+        # If key balance-sheet fields are still missing, patch via openpyxl.
+        # Condition: ANY of net_worth, long_term_debt, short_term_debt is zero
+        print(
+            f"ITR regex result: net_worth={itr.net_worth}, revenue={itr.revenue}")
+        print(f"ITR source_file: {parsed.source_file!r}")
+        if itr.net_worth == 0 or itr.long_term_debt == 0 or itr.short_term_debt == 0:
+            print("ITR: regex incomplete — triggering openpyxl fallback...")
+            itr = self._extract_itr_from_xlsx(parsed.source_file, itr)
+
+        print(f"ITR final: net_worth={itr.net_worth}, revenue={itr.revenue}, "
+              f"LTD={itr.long_term_debt}, STD={itr.short_term_debt}")
+        return itr
 
     def _extract_itr_regex(self, parsed: ParsedDocument) -> ITRData:
         """
@@ -578,55 +985,70 @@ class FinancialExtractor:
             if m:
                 setattr(itr, field, m.group(1).strip())
 
-        # ── Numeric fields — try colon-style first, then whitespace-style ────
-        # Each entry: (field_name, colon_pattern, whitespace_pattern)
+        # ── Numeric fields — three-tier: colon → pipe-table → whitespace ────────
+        # Each tuple: (field, colon_pat, pipe_pat, whitespace_pat)
+        # pipe_pat handles Docling's XLSX output: "| Label | | 123456789 | ... |"
+        # Any pattern can be None to skip that tier.
         numeric_fields = [
             ('gross_income',
              r'(?:Gross Total Income|Total Income)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'(?:Gross Total Income|TOTAL INCOME)[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'(?:Gross Total Income|TOTAL INCOME)\s{2,}([\d,]+)'),
             ('net_income',
-             r'(?:PROFIT AFTER TAX|PAT|Net Income|Taxable Income)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'(?:PROFIT AFTER TAX|PAT|Net Income)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'PROFIT AFTER TAX[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'PROFIT AFTER TAX.*?\s{2,}([\d,]+)'),
             ('tax_paid',
              r'(?:Tax Paid|Total Tax Paid|Provision for Current Tax)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'Provision for Current Tax[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'Provision for Current Tax.*?\s{2,}([\d,]+)'),
             ('tds',
              r'TDS[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
-             None),
+             None, None),
             ('net_worth',
              r'(?:Net Worth|Networth|NET WORTH\s*/\s*EQUITY|Shareholders.{0,10}Equity)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'NET WORTH[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'NET WORTH.*?\s{2,}([\d,]+)'),
             ('long_term_debt',
              r'(?:Long.?term Borrowings?|Term Loan|Long.?term Debt)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'Long.?term Borrowings?[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'Long.?term Borrowings?.*?\s{2,}([\d,]+)'),
             ('short_term_debt',
-             r'(?:Short.?term Borrowings?|Working Capital Loan|Cash Credit|CC Limit)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'(?:Short.?term Borrowings?|Working Capital Loan|Cash Credit)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'Short.?term Borrowings?[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'Short.?term Borrowings?.*?\s{2,}([\d,]+)'),
             ('revenue',
              r'(?:Revenue from Operations|Net Revenue)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'Revenue from Operations[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'Revenue from Operations.*?\s{2,}([\d,]+)'),
             ('interest_expense',
              r'(?:Finance Costs?|Interest Expense|Interest Paid)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'Finance Costs?[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'Finance Costs?.*?\s{2,}([\d,]+)'),
             ('depreciation',
              r'(?:Depreciation|Amortis)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'Depreciation[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'Depreciation.*?\s{2,}([\d,]+)'),
             ('total_assets',
              r'(?:TOTAL ASSETS|Total Assets)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'TOTAL ASSETS[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'TOTAL ASSETS.*?\s{2,}([\d,]+)'),
             ('total_liabilities',
              r'(?:TOTAL (?:EQUITY\s*&\s*)?LIABILITIES|Total Liabilities)[:\s]*[₹Rs.]?\s*([\d,]+\.?\d*)',
+             r'TOTAL EQUITY[^|\n]*LIABILITIES[^|\n]*\|[^|\n]*\|\s*([\d]{6,})',
              r'TOTAL EQUITY.*?LIABILITIES.*?\s{2,}([\d,]+)'),
         ]
 
-        for field, colon_pat, ws_pat in numeric_fields:
-            m = re.search(colon_pat, text, re.IGNORECASE)
-            if m:
+        for field, colon_pat, pipe_pat, ws_pat in numeric_fields:
+            if re.search(colon_pat, text, re.IGNORECASE):
+                m = re.search(colon_pat, text, re.IGNORECASE)
                 setattr(itr, field, self._parse_amount(m.group(1)))
-            elif ws_pat:
+            elif pipe_pat and re.search(pipe_pat, text, re.IGNORECASE):
+                m = re.search(pipe_pat, text, re.IGNORECASE)
+                setattr(itr, field, self._parse_amount(m.group(1)))
+            elif ws_pat and re.search(ws_pat, text, re.IGNORECASE):
                 m = re.search(ws_pat, text, re.IGNORECASE)
-                if m:
-                    setattr(itr, field, self._parse_amount(m.group(1)))
+                setattr(itr, field, self._parse_amount(m.group(1)))
 
         if itr.net_income > 0 and itr.interest_expense > 0 and itr.depreciation > 0:
             itr.ebitda = (itr.net_income + itr.tax_paid
@@ -635,6 +1057,103 @@ class FinancialExtractor:
         if DEBUG_MODE:
             print(f"ITR regex: net_worth={itr.net_worth}, revenue={itr.revenue}, "
                   f"LTD={itr.long_term_debt}, STD={itr.short_term_debt}")
+        return itr
+
+    def _extract_itr_from_xlsx(self, file_path: str, itr: "ITRData") -> "ITRData":
+        """
+        Direct openpyxl read for XLSX ITR/financial statements.
+        Last-resort fallback when Docling text + regex both fail.
+        Scans every cell for known label keywords and takes the first
+        numeric value in the same row as the matched label.
+        """
+        try:
+            import openpyxl
+            from pathlib import Path as _Path
+            import tempfile as _tempfile
+
+            if not file_path:
+                print("ITR xlsx fallback: no file_path provided")
+                return itr
+
+            p = _Path(file_path)
+
+            # If path is relative (just a filename), check the system temp dir
+            if not p.is_absolute():
+                temp_candidate = _Path(_tempfile.gettempdir()) / p.name
+                if temp_candidate.exists():
+                    p = temp_candidate
+                    file_path = str(p)
+
+            if not p.exists():
+                print(f"ITR xlsx fallback: file not found at {file_path!r}")
+                return itr
+
+            if not file_path.lower().endswith(('.xlsx', '.xls')):
+                print(f"ITR xlsx fallback: not an xlsx file: {file_path!r}")
+                return itr
+
+            print(f"ITR xlsx fallback: reading {p}")
+
+            wb = openpyxl.load_workbook(file_path, data_only=True)
+
+            # Map label keywords → ITRData field names
+            # Each entry: (field, [keyword variants])
+            label_map = [
+                ('net_worth',        ['net worth', 'networth', 'equity']),
+                ('revenue',          [
+                 'revenue from operations', 'net revenue', 'net sales']),
+                ('net_income',       [
+                 'profit after tax', 'pat', 'net profit']),
+                ('gross_income',     ['gross total income',
+                 'total income', 'profit before tax']),
+                ('tax_paid',         [
+                 'provision for current tax', 'tax paid', 'income tax']),
+                ('long_term_debt',   [
+                 'long-term borrowings', 'long term borrowings', 'term loan']),
+                ('short_term_debt',  ['short-term borrowings',
+                 'short term borrowings', 'cash credit']),
+                ('interest_expense', ['finance costs',
+                 'interest expense', 'interest paid']),
+                ('depreciation',     ['depreciation',
+                 'amortisation', 'amortization']),
+                ('total_assets',     ['total assets']),
+                ('total_liabilities', [
+                 'total equity & liabilities', 'total liabilities']),
+            ]
+
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                for row in ws.iter_rows(values_only=True):
+                    # Build a text representation of the row
+                    row_text = ' '.join(str(c).lower()
+                                        for c in row if c is not None)
+                    if not row_text.strip():
+                        continue
+
+                    for field, keywords in label_map:
+                        if getattr(itr, field, 0) != 0:
+                            continue  # Already filled
+                        if any(kw in row_text for kw in keywords):
+                            # Find the first numeric cell in this row
+                            for cell in row:
+                                try:
+                                    val = float(cell)
+                                    if val > 0:
+                                        setattr(itr, field, val)
+                                        break
+                                except (TypeError, ValueError):
+                                    continue
+
+            # Derive EBITDA if we now have the pieces
+            if itr.net_income > 0 and (itr.interest_expense > 0 or itr.depreciation > 0):
+                itr.ebitda = (itr.net_income + itr.tax_paid
+                              + itr.interest_expense + itr.depreciation)
+
+            print(f"ITR xlsx direct: net_worth={itr.net_worth}, revenue={itr.revenue}, "
+                  f"LTD={itr.long_term_debt}, STD={itr.short_term_debt}")
+
+        except Exception as e:
+            print(f"ITR xlsx fallback error: {e}")
         return itr
 
     def extract(self, parsed: ParsedDocument):

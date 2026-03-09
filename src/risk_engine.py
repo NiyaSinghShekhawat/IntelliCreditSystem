@@ -164,6 +164,8 @@ class RiskEngine:
         # ── From Bank Statement ───────────────────────────────────────────────
 
         if bank:
+            print(f"[RISK ENGINE] bank.average_monthly_balance={bank.average_monthly_balance}, "
+                  f"monthly_balances={bank.monthly_balances}, total_credits={bank.total_credits}")
             if bank.average_monthly_balance > 0:
                 d.avg_monthly_balance_inr = bank.average_monthly_balance
                 derived_count += 1
@@ -171,6 +173,13 @@ class RiskEngine:
                 d.avg_monthly_balance_inr = round(
                     sum(bank.monthly_balances) / len(bank.monthly_balances), 2
                 )
+                derived_count += 1
+            elif bank.total_credits > 0:
+                # Estimate avg balance as ~15% of monthly credits (conservative proxy)
+                monthly_credits = bank.total_credits / 12
+                d.avg_monthly_balance_inr = round(monthly_credits * 0.15, 2)
+                notes.append(
+                    "Average monthly balance estimated from total credits.")
                 derived_count += 1
             else:
                 notes.append(

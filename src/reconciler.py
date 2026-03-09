@@ -41,6 +41,8 @@ class GSTReconciler:
 
         itc_2a = gstr_2a.itc_claimed or 0.0
         itc_3b = gstr_3b.itc_claimed or 0.0
+        print(f"[GST RECONCILE] 2A: turnover={gstr_2a.turnover}, itc={itc_2a} | "
+              f"3B: turnover={gstr_3b.turnover}, itc={itc_3b}")
 
         if itc_2a < self.MIN_PLAUSIBLE_ITC and itc_3b >= self.MIN_PLAUSIBLE_ITC:
             # 2A parsed to zero but 3B has real data → almost certainly a
@@ -101,17 +103,28 @@ class GSTReconciler:
                 })
 
         # ── Turnover Mismatch Check ───────────────────────────────────────────
+        # IMPORTANT: GSTR-2A is an auto-drafted statement populated from
+        # SUPPLIER filings — it does NOT contain the company's own turnover.
+        # Only GSTR-3B has the company's self-declared turnover.
+        # So turnover_2a == 0 is NORMAL and expected — it is NOT a parse error.
+        # We only run turnover reconciliation when BOTH forms have a turnover value.
         turnover_2a = gstr_2a.turnover or 0.0
         turnover_3b = gstr_3b.turnover or 0.0
 
-        if turnover_2a < self.MIN_PLAUSIBLE_TURNOVER and turnover_3b >= self.MIN_PLAUSIBLE_TURNOVER:
+        if turnover_2a < self.MIN_PLAUSIBLE_TURNOVER:
+            # GSTR-2A has no turnover — this is expected and normal.
+            # Skip turnover reconciliation entirely; it's not meaningful for 2A.
+            turnover_variance_pct = 0.0
+
+        elif turnover_3b < self.MIN_PLAUSIBLE_TURNOVER:
             parse_warnings.append(
-                "PARSE WARNING: GSTR-2A turnover is zero/missing. "
+                "PARSE WARNING: GSTR-3B turnover is zero/missing. "
                 "Turnover reconciliation skipped — manual review required."
             )
-            turnover_variance_pct = 0.0  # Can't compute without 2A data
+            turnover_variance_pct = 0.0
 
-        elif turnover_2a > 0:
+        else:
+            # Both forms have plausible turnover — run comparison
             turnover_variance_pct = abs(
                 turnover_2a - turnover_3b) / turnover_2a * 100
             if turnover_variance_pct > GST_MISMATCH_THRESHOLD_PCT:
@@ -122,8 +135,6 @@ class GSTReconciler:
                     "variance_pct": round(turnover_variance_pct, 2),
                     "flag": "Turnover mismatch — possible under-reporting in 3B"
                 })
-        else:
-            turnover_variance_pct = 0.0
 
         # ── Tax Mismatch Check ────────────────────────────────────────────────
         tax_2a = gstr_2a.total_tax or 0.0
