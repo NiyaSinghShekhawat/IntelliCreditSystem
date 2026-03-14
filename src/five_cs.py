@@ -179,10 +179,14 @@ class FiveCsAnalyzer:
             elif bounces <= 2:
                 score -= 0.5
                 factors.append(f"{bounces} EMI bounce(s) — minor concern")
-            else:
-                score -= 2.0
+            elif bounces <= 5:
+                score -= 2.5
                 factors.append(
                     f"{bounces} EMI bounces — serious repayment concern")
+            else:
+                score -= 4.0
+                factors.append(
+                    f"🚨 {bounces} EMI bounces in 6 months — systematic default pattern, disqualifying")
 
         # Also use DSCR from derived financials if available
         if result.derived_financials and result.derived_financials.dscr:
@@ -239,20 +243,25 @@ class FiveCsAnalyzer:
             de_ratio = result.qualitative_inputs.debt_equity_ratio
             details["debt_equity_ratio"] = de_ratio
 
-            if de_ratio < 1.0:
+            if de_ratio >= 99.0:
+                score -= 4.0
+                factors.append(
+                    "🚨 D/E ratio undefined — negative net worth signals insolvency")
+            elif de_ratio < 1.0:
                 score += 3.0
                 factors.append(
-                    f"Excellent D/E ratio ({de_ratio}) — low leverage")
+                    f"Excellent D/E ratio ({de_ratio:.1f}x) — low leverage")
             elif de_ratio < 2.0:
                 score += 1.5
-                factors.append(f"Acceptable D/E ratio ({de_ratio})")
+                factors.append(f"Acceptable D/E ratio ({de_ratio:.1f}x)")
             elif de_ratio < 3.0:
                 score -= 1.0
                 factors.append(
-                    f"Elevated D/E ratio ({de_ratio}) — moderate leverage")
+                    f"Elevated D/E ratio ({de_ratio:.1f}x) — moderate leverage")
             else:
                 score -= 3.0
-                factors.append(f"High D/E ratio ({de_ratio}) — over-leveraged")
+                factors.append(
+                    f"High D/E ratio ({de_ratio:.1f}x) — over-leveraged")
 
             # Prefer derived net worth from ITR over officer slider default
             net_worth = (
@@ -267,6 +276,13 @@ class FiveCsAnalyzer:
             elif net_worth > 1_000_000:
                 score += 1.0
                 factors.append(f"Adequate net worth (Rs.{net_worth:,.0f})")
+            elif net_worth > 0:
+                factors.append(
+                    f"Thin net worth (Rs.{net_worth:,.0f}) — minimal capital cushion")
+            elif net_worth < 0:
+                score -= 4.0
+                factors.append(
+                    f"🚨 Negative net worth (Rs.{net_worth:,.0f}) — company is technically insolvent")
 
         if result.itr_data:
             net_income = result.itr_data.net_income

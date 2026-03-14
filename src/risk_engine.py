@@ -105,10 +105,13 @@ class RiskEngine:
         # ── From ITR ─────────────────────────────────────────────────────────
 
         if itr:
-            # Net worth — direct field
-            if itr.net_worth > 0:
+            # Net worth — store even if negative (negative = insolvent, critical risk signal)
+            if itr.net_worth != 0:
                 d.net_worth_inr = itr.net_worth
                 derived_count += 1
+                if itr.net_worth < 0:
+                    notes.append(
+                        f"⚠️ Negative net worth detected (₹{itr.net_worth/100000:.1f}L) — company is technically insolvent.")
             else:
                 notes.append(
                     "Net worth not found in ITR — officer must enter manually.")
@@ -119,6 +122,14 @@ class RiskEngine:
             if total_debt > 0 and itr.net_worth > 0:
                 d.debt_equity_ratio = round(total_debt / itr.net_worth, 2)
                 d.total_debt_inr = total_debt
+                derived_count += 1
+            elif itr.net_worth < 0:
+                # Negative net worth — D/E is mathematically undefined but signals insolvency.
+                # Use sentinel value 99.0 so risk engine treats it as maximum leverage.
+                d.debt_equity_ratio = 99.0
+                d.total_debt_inr = total_debt if total_debt > 0 else itr.total_liabilities
+                notes.append(
+                    "⚠️ D/E ratio undefined — negative net worth. Sentinel 99x applied for risk scoring.")
                 derived_count += 1
             elif itr.total_liabilities > 0 and itr.net_worth > 0:
                 # Fallback: use total_liabilities as proxy for debt
@@ -314,18 +325,62 @@ class RiskEngine:
 
         if gst_variance >= 0.50:
             # ≥50% ITC variance is a major red flag — minimum CONDITIONAL
-            # Floor risk score at 0.35 (just above LOW threshold of 0.30)
             if risk_score < 0.35:
                 risk_score = 0.35
-                override_reason = f"GST ITC variance {gst_variance*100:.1f}% — policy floor applied"
+                override_reason = f"GST ITC variance {gst_variance*100:.1f}% — policy floor applied (CONDITIONAL)"
                 print(f"[RISK ENGINE] Hard rule: GST variance {gst_variance*100:.1f}% → "
                       f"risk_score floored to {risk_score}")
         elif gst_variance >= 0.20:
-            # 20-50% variance — add penalty but don't force conditional
             if risk_score < 0.20:
                 risk_score = max(risk_score, gst_variance * 0.4)
                 print(
                     f"[RISK ENGINE] GST variance penalty applied: {risk_score:.3f}")
+
+        # ── Additional hard REJECT rules ──────────────────────────────────────
+        # These represent absolute disqualifiers in Indian bank credit policy.
+        reject_reasons = []
+
+        # Rule: Negative net worth → insolvent company → REJECT
+        net_worth = 0.0
+        if result.derived_financials and result.derived_financials.net_worth_inr is not None:
+            net_worth = result.derived_financials.net_worth_inr
+        elif result.qualitative_inputs:
+            net_worth = result.qualitative_inputs.net_worth_inr or 0.0
+        if net_worth < 0:
+            if risk_score < 0.65:
+                risk_score = 0.65
+            reject_reasons.append(
+                f"Negative net worth (₹{net_worth/100000:.1f}L) — company is insolvent")
+            print(
+                f"[RISK ENGINE] Hard rule: Negative net worth → risk_score floored to {risk_score}")
+
+        # Rule: EMI bounces ≥ 6 in 6 months → REJECT (pattern of default)
+        bounce_count = 0
+        if result.bank_data:
+            bounce_count = result.bank_data.emi_bounce_count or 0
+        if bounce_count >= 6:
+            if risk_score < 0.70:
+                risk_score = 0.70
+            reject_reasons.append(
+                f"{bounce_count} EMI bounces in 6 months — systematic default pattern")
+            print(
+                f"[RISK ENGINE] Hard rule: {bounce_count} bounces → risk_score floored to {risk_score}")
+
+        # Rule: GST variance ≥ 80% + negative net worth = definitive fraud signal → REJECT
+        if gst_variance >= 0.80 and net_worth <= 0:
+            if risk_score < 0.75:
+                risk_score = 0.75
+            reject_reasons.append(
+                f"GST fraud signal + insolvent entity — automatic reject")
+            print(
+                f"[RISK ENGINE] Hard rule: GST fraud + insolvency → risk_score {risk_score}")
+
+        if reject_reasons:
+            combined = " | ".join(reject_reasons)
+            if override_reason:
+                override_reason = override_reason + " | " + combined
+            else:
+                override_reason = combined
 
         shap_factors = self._build_shap_factors(
             features, shap_values, risk_score)
@@ -407,17 +462,16 @@ class RiskEngine:
             )
 
         # ── D/E ratio ────────────────────────────────────────────────────────
-        # Priority: qualitative_inputs → derived_financials → 1.5 default
+        # Priority: derived_financials (most accurate) → qualitative_inputs → 1.5 default
+        # NOTE: sentinel value 99.0 means negative net worth (insolvent)
         de_ratio = 1.5  # neutral default
-        if q and q.debt_equity_ratio != 1.5:
-            # Officer explicitly set a value (not the default)
-            de_ratio = q.debt_equity_ratio
-        elif q and "debt_equity_ratio" in q.auto_filled_fields:
-            # Auto-filled from documents
-            de_ratio = q.debt_equity_ratio
-        elif d and d.debt_equity_ratio is not None:
-            # Derived available but not yet copied to qualitative_inputs
-            de_ratio = d.debt_equity_ratio
+        if d and d.debt_equity_ratio is not None:
+            de_ratio = d.debt_equity_ratio          # always trust derived first
+        elif q and q.debt_equity_ratio != 1.5:
+            de_ratio = q.debt_equity_ratio          # officer override
+        elif q and "debt_equity_ratio" in (q.auto_filled_fields or []):
+            de_ratio = q.debt_equity_ratio          # auto-filled from docs
+        # Sentinel 99.0 → maps to 1.0 (max risk) via min(99/4, 1.0)
         features["debt_equity_ratio"] = min(de_ratio / 4, 1.0)
 
         # ── Net worth (used in loan limit, not a direct feature but stored) ──
@@ -437,7 +491,16 @@ class RiskEngine:
             features["sector_risk_score"] = q.sector_risk_score / 10
 
         # ── Revenue growth rate ───────────────────────────────────────────────
-        # Can only compute if we have multi-year data — left as 0.0 for now
+        # Detect abnormal YoY revenue growth from ITR (>100% in 1yr = red flag)
+        if result.itr_data and result.itr_data.revenue > 0:
+            itr = result.itr_data
+            # If prior_year_revenue is available and stored, compute growth
+            if hasattr(itr, 'prior_year_revenue') and itr.prior_year_revenue and itr.prior_year_revenue > 0:
+                growth = (itr.revenue - itr.prior_year_revenue) / \
+                    itr.prior_year_revenue
+                # Abnormal growth (>100%) is a fraud signal — cap at 1.0
+                features["revenue_growth_rate"] = min(
+                    abs(growth), 1.0) if growth > 1.0 else 0.0
         # (v1.2 roadmap: multi-year ITR trend analysis)
         features["revenue_growth_rate"] = 0.0
 

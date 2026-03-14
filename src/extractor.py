@@ -899,17 +899,44 @@ class FinancialExtractor:
             if bank.total_debits == 0 and all_debits:
                 bank.total_debits = round(sum(all_debits), 2)
 
-            # EMI bounce count from ledger if not already set
-            if bank.emi_bounce_count == 0:
-                bounce_kw = ['bounce', 'return',
-                             'nach return', 'ecs return', 'dishonour']
-                for sh in wb.sheetnames:
-                    ws = wb[sh]
-                    for row in ws.iter_rows(values_only=True):
-                        row_text = ' '.join(str(c).lower()
-                                            for c in row if c is not None)
-                        if any(kw in row_text for kw in bounce_kw):
-                            bank.emi_bounce_count += 1
+            # EMI bounce count — always re-scan xlsx for accuracy.
+            # Groq tends to undercount; xlsx ledger has the full picture.
+            # Strategy 1: read the summary row "EMI/Loan Bounces (6 months)  N"
+            # Strategy 2: count ledger rows that contain bounce/return keywords
+            # Take the maximum of Groq value and xlsx-derived value.
+            bounce_summary_kw = ['emi', 'loan bounce', 'bounces']
+            xlsx_bounce_from_summary = 0
+            xlsx_bounce_from_ledger = 0
+            bounce_ledger_kw = ['bounce', 'nach return', 'ecs return', 'dishonour',
+                                'cheque return', 'nach bounce']
+            for sh in wb.sheetnames:
+                ws = wb[sh]
+                for row in ws.iter_rows(values_only=True):
+                    row_text = ' '.join(str(c).lower()
+                                        for c in row if c is not None)
+                    if not row_text.strip():
+                        continue
+                    # Summary row: "EMI/Loan Bounces (6 months)   9"
+                    if 'bounce' in row_text and ('month' in row_text or 'emi' in row_text):
+                        for cell in row:
+                            try:
+                                v = int(float(cell))
+                                if 0 < v < 100:   # sanity: bounce counts 1-99
+                                    xlsx_bounce_from_summary = max(
+                                        xlsx_bounce_from_summary, v)
+                            except (TypeError, ValueError):
+                                continue
+                    # Ledger rows with bounce/return in remarks
+                    elif any(kw in row_text for kw in bounce_ledger_kw):
+                        # Skip the summary/header rows
+                        if 'month' not in row_text and 'summary' not in row_text:
+                            xlsx_bounce_from_ledger += 1
+            xlsx_bounce = max(xlsx_bounce_from_summary,
+                              xlsx_bounce_from_ledger)
+            if xlsx_bounce > bank.emi_bounce_count:
+                print(f"Bank xlsx: bounce override {bank.emi_bounce_count} → {xlsx_bounce} "
+                      f"(summary={xlsx_bounce_from_summary}, ledger={xlsx_bounce_from_ledger})")
+                bank.emi_bounce_count = xlsx_bounce
 
             print(f"Bank xlsx fallback: avg_bal={bank.average_monthly_balance:,.0f}, "
                   f"credits={bank.total_credits:,.0f}, debits={bank.total_debits:,.0f}, "
@@ -1142,10 +1169,17 @@ class FinancialExtractor:
                             continue  # Already filled
                         if any(kw in row_text for kw in keywords):
                             # Find the first numeric cell in this row
+                            # Allow negatives for net_worth and net_income
+                            # (negative net worth = insolvent; negative net income = loss)
+                            allow_negative = field in (
+                                'net_worth', 'net_income', 'gross_income')
                             for cell in row:
                                 try:
                                     val = float(cell)
-                                    if val > 0:
+                                    if allow_negative and val != 0:
+                                        setattr(itr, field, val)
+                                        break
+                                    elif not allow_negative and val > 0:
                                         setattr(itr, field, val)
                                         break
                                 except (TypeError, ValueError):

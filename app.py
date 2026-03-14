@@ -652,6 +652,40 @@ with tab3:
 
             st.markdown("---")
             st.markdown("#### 📥 Reports")
+
+            if "pdf_path" in st.session_state:
+                # ── Base64-encode the PDF for viewing ─────────────────────────
+                import base64 as _b64mod
+                with open(st.session_state["pdf_path"], "rb") as _f:
+                    _pdf_bytes = _f.read()
+                _b64 = _b64mod.b64encode(_pdf_bytes).decode("utf-8")
+                _fname = Path(st.session_state["pdf_path"]).name
+                _data_uri = f"data:application/pdf;base64,{_b64}"
+
+                # View PDF — JS window.open is the most reliable cross-browser
+                # approach on Streamlit Cloud (plain <a> links are often blocked)
+                import streamlit.components.v1 as _components
+                _components.html(
+                    f'''
+                    <div style="margin-bottom:12px;">
+                      <button
+                        onclick="window.open('{_data_uri}', '_blank')"
+                        style="display:inline-flex;align-items:center;gap:8px;
+                               background:#0d1f5c;color:#fff;font-weight:700;
+                               padding:11px 26px;border-radius:6px;cursor:pointer;
+                               font-size:0.95rem;border:2px solid #c9970a;
+                               font-family:sans-serif;letter-spacing:0.02em;">
+                        &#128196;&nbsp; View PDF Report
+                      </button>
+                      <span style="margin-left:12px;font-size:0.82rem;
+                                   color:#888;font-family:sans-serif;">
+                        Opens in new tab
+                      </span>
+                    </div>
+                    ''',
+                    height=60,
+                )
+
             col_dl1, col_dl2 = st.columns(2)
 
             if "pdf_path" in st.session_state:
