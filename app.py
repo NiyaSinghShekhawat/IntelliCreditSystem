@@ -927,7 +927,7 @@ def render_dashboard():
             if st.button("Open →", key=f"open_{case['id']}"):
                 st.session_state.entity_id = case.get("entity_id")
                 st.session_state.case_id = case["id"]
-                st.session_state.page = "analysis"
+                st.session_state.page = "case_view"  # ← was "analysis", now "case_view"
                 st.rerun()
         st.markdown("<hr class='ic-divider' style='margin:0.4rem 0;'>",
                     unsafe_allow_html=True)
@@ -1186,6 +1186,15 @@ def render_analysis():
                             for f in obj.factors:
                                 st.markdown(f"• {f}")
 
+                # SWOT Analysis
+                if st.session_state.get("swot_result"):
+                    st.markdown("<hr class='ic-divider'>",
+                                unsafe_allow_html=True)
+                    st.markdown(
+                        "<p class='ic-section-title'>SWOT Analysis</p>", unsafe_allow_html=True)
+                    from src.swot_generator import render_swot_ui
+                    render_swot_ui(st.session_state["swot_result"])
+
                 if pred.early_warning_signals:
                     st.markdown(
                         "<p class='ic-section-title'>Early Warning Signals</p>", unsafe_allow_html=True)
@@ -1343,6 +1352,12 @@ def render_analysis():
             paths = engines["cam"].generate_both(result)
             st.session_state["pdf_path"] = paths["pdf"]
             st.session_state["docx_path"] = paths["docx"]
+        with st.spinner("🧩 Generating SWOT analysis..."):
+            from src.swot_generator import generate_swot, save_swot_to_case
+            swot = generate_swot(result=result)
+            st.session_state["swot_result"] = swot
+            if st.session_state.get("case_id"):
+                save_swot_to_case(st.session_state["case_id"], swot)
 
         if st.session_state.get("case_id"):
             try:
@@ -1368,6 +1383,9 @@ elif st.session_state.page == "classify":
     render()
 elif st.session_state.page == "onboarding":
     from pages.onboarding import render
+    render()
+elif st.session_state.page == "case_view":
+    from pages.case_view import render
     render()
 else:
     render_analysis()
