@@ -47,6 +47,8 @@ Continue →           →  Auto-routes to analysis page
 🏠 Dashboard         →  All cases with status, risk score, decision badges
 ```
 
+Visit [link](https://whimsical.com/niya-s-workspace2/intellicredit-v-2-0-MwBBvpWxKYkYNYV7iz6nRv) to see the full system-architecture workflow diagram.
+
 ---
 
 ## ✨ Features
